@@ -1,0 +1,441 @@
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required, get_jwt_identity
+import requests
+import os
+import json
+from ..models import db, Competitor
+from ..services import (
+    AnalysisService, CompetitorService, ProductService,
+    ProductLinkService, SearchService, SiteParsingService
+)
+from ..utils.domains import is_excluded_domain
+from ..utils.yandex_xml_parser import YandexXMLParser
+
+analysis_bp = Blueprint('analysis', __name__, url_prefix='/api/analysis')
+
+
+@analysis_bp.route('', methods=['POST'])
+@jwt_required()
+def create_analysis():
+    current_user_id = get_jwt_identity()
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    
+    analysis_type = data.get('type')
+    region = data.get('region')
+    
+    if not analysis_type or not region:
+        return jsonify({'error': 'Analysis type and region are required'}), 400
+    
+    if analysis_type == 'auto':
+        queries = data.get('queries', [])
+        positions = data.get('positions', 5)
+        result_types = data.get('result_types', ['organic'])
+        
+        if not queries:
+            return jsonify({'error': 'Поисковые запросы обязательны для автоматического анализа'}), 400
+        
+        user_site = data.get('user_site')
+        
+        analysis = AnalysisService.create_analysis(
+            user_id=current_user_id,
+            analysis_type='auto',
+            region=region,
+            queries=queries,
+            user_site=user_site
+        )
+        
+        if user_site:
+            CompetitorService.add_competitor(
+                analysis_id=analysis.id,
+                domain=user_site,
+                is_user_site=True
+            )
+        
+        competitors = SearchService.perform_search(
+            analysis_id=analysis.id,
+            queries=queries,
+            positions=positions,
+            result_types=result_types,
+            region=region
+        )
+        
+        return jsonify({
+            'message': 'Поиск завершен, выберите конкурентов',
+            'analysis': analysis.to_dict(),
+            'analysis_id': analysis.id,
+            'found_competitors': competitors,
+            'require_selection': True
+        }), 200
+    
+    elif analysis_type == 'manual':
+        user_site = data.get('user_site')
+        competitors = data.get('competitors', [])
+        
+        if not user_site:
+            return jsonify({'error': 'User site is required for manual analysis'}), 400
+        
+        analysis = AnalysisService.create_analysis(
+            user_id=current_user_id,
+            analysis_type='manual',
+            region=region,
+            queries=[]
+        )
+        
+        user_competitor = CompetitorService.add_competitor(
+            analysis_id=analysis.id,
+            domain=user_site,
+            is_user_site=True
+        )
+        
+        saved_competitors = [user_competitor]
+        
+        for comp in competitors[:3]:
+            domain = comp.get('domain')
+            if domain and is_excluded_domain(domain):
+                continue
+            competitor = CompetitorService.add_competitor(
+                analysis_id=analysis.id,
+                domain=domain,
+                is_user_site=False
+            )
+            saved_competitors.append(competitor)
+        
+        return jsonify({
+            'message': 'Analysis created successfully',
+            'analysis': analysis.to_dict(),
+            'competitors': [c.to_dict() for c in saved_competitors]
+        }), 201
+    
+    return jsonify({'error': 'Invalid analysis type'}), 400
+
+
+@analysis_bp.route('', methods=['GET'])
+@jwt_required()
+def get_analyses():
+    current_user_id = get_jwt_identity()
+    analyses = AnalysisService.get_user_analyses(current_user_id)
+    
+    return jsonify({
+        'analyses': [a.to_dict() for a in analyses]
+    }), 200
+
+
+@analysis_bp.route('/<int:analysis_id>', methods=['GET'])
+@jwt_required()
+def get_analysis(analysis_id):
+    current_user_id = get_jwt_identity()
+    analysis = AnalysisService.get_analysis_by_id(analysis_id, current_user_id)
+    
+    if not analysis:
+        return jsonify({'error': 'Analysis not found'}), 404
+    
+    competitors = CompetitorService.get_competitors(analysis_id)
+    product_links = ProductLinkService.get_analysis_links(analysis_id)
+    
+    result = analysis.to_dict()
+    result['competitors'] = []
+    
+    for comp in competitors:
+        comp_dict = comp.to_dict()
+        products = ProductService.get_competitor_products(comp.id)
+        comp_dict['products'] = [p.to_dict() for p in products]
+        result['competitors'].append(comp_dict)
+    
+    result['product_links'] = [link.to_dict() for link in product_links]
+    
+    return jsonify({'analysis': result}), 200
+
+
+@analysis_bp.route('/<int:analysis_id>', methods=['DELETE'])
+@jwt_required()
+def delete_analysis(analysis_id):
+    current_user_id = get_jwt_identity()
+    
+    if AnalysisService.delete_analysis(analysis_id, current_user_id):
+        return jsonify({'message': 'Analysis deleted successfully'}), 200
+    
+    return jsonify({'error': 'Analysis not found'}), 404
+
+
+@analysis_bp.route('/<int:analysis_id>/competitor', methods=['POST'])
+@jwt_required()
+def add_competitor(analysis_id):
+    current_user_id = get_jwt_identity()
+    analysis = AnalysisService.get_analysis_by_id(analysis_id, current_user_id)
+    
+    if not analysis:
+        return jsonify({'error': 'Analysis not found'}), 404
+    
+    data = request.get_json()
+    domain = data.get('domain')
+    
+    if not domain:
+        return jsonify({'error': 'Domain is required'}), 400
+    
+    is_user_site = data.get('is_user_site', False)
+    competitor = CompetitorService.add_competitor(
+        analysis_id=analysis_id,
+        domain=domain,
+        is_user_site=is_user_site
+    )
+    
+    return jsonify({
+        'message': 'Competitor added successfully',
+        'competitor': competitor.to_dict()
+    }), 201
+
+
+@analysis_bp.route('/competitor/<int:competitor_id>', methods=['GET'])
+@jwt_required()
+def get_competitor(competitor_id):
+    competitor = Competitor.query.get(competitor_id)
+    
+    if not competitor:
+        return jsonify({'error': 'Competitor not found'}), 404
+    
+    return jsonify({'competitor': competitor.to_dict()}), 200
+
+
+@analysis_bp.route('/competitor/<int:competitor_id>', methods=['PUT'])
+@jwt_required()
+def update_competitor(competitor_id):
+    data = request.get_json()
+    
+    title_selector = data.get('title_selector')
+    price_selector = data.get('price_selector')
+    sku_selector = data.get('sku_selector')
+    
+    competitor = CompetitorService.update_selectors(competitor_id, title_selector, price_selector, sku_selector)
+    
+    if not competitor:
+        return jsonify({'error': 'Competitor not found'}), 404
+    
+    return jsonify({
+        'message': 'Competitor updated successfully',
+        'competitor': competitor.to_dict()
+    }), 200
+
+
+@analysis_bp.route('/competitor/<int:competitor_id>', methods=['DELETE'])
+@jwt_required()
+def delete_competitor(competitor_id):
+    if CompetitorService.delete_competitor(competitor_id):
+        return jsonify({'message': 'Competitor deleted successfully'}), 200
+    
+    return jsonify({'error': 'Competitor not found'}), 404
+
+
+@analysis_bp.route('/<int:analysis_id>/select-competitors', methods=['POST'])
+@jwt_required()
+def select_competitors(analysis_id):
+    current_user_id = get_jwt_identity()
+    analysis = AnalysisService.get_analysis_by_id(analysis_id, current_user_id)
+    
+    if not analysis:
+        return jsonify({'error': 'Analysis not found'}), 404
+    
+    data = request.get_json()
+    selected_domains = data.get('competitors', [])
+    
+    if not selected_domains:
+        return jsonify({'error': 'No competitors selected'}), 400
+    
+    if len(selected_domains) > 3:
+        return jsonify({'error': 'Maximum 3 competitors allowed'}), 400
+    
+    domain_names = [c.get('domain') if isinstance(c, dict) else c for c in selected_domains]
+    saved_competitors = SearchService.save_selected_competitors(analysis_id, domain_names)
+    
+    return jsonify({
+        'message': 'Competitors saved successfully',
+        'competitors': [c.to_dict() for c in saved_competitors]
+    }), 200
+
+
+@analysis_bp.route('/competitor/<int:competitor_id>/parse', methods=['POST'])
+@jwt_required()
+def parse_competitor(competitor_id):
+    data = request.get_json()
+    
+    url = data.get('url')
+    title_selector = data.get('title_selector')
+    price_selector = data.get('price_selector')
+    sku_selector = data.get('sku_selector')
+    
+    if not all([url, title_selector, price_selector]):
+        return jsonify({'error': 'URL and selectors are required'}), 400
+    
+    products = SiteParsingService.parse_competitor_site(
+        competitor_id=competitor_id,
+        url=url,
+        title_selector=title_selector,
+        price_selector=price_selector,
+        sku_selector=sku_selector
+    )
+    
+    return jsonify({
+        'message': 'Products parsed successfully',
+        'products': [p.to_dict() for p in products]
+    }), 200
+
+
+@analysis_bp.route('/competitor/<int:competitor_id>/verify-selectors', methods=['POST'])
+@jwt_required()
+def verify_selectors(competitor_id):
+    competitor = Competitor.query.get(competitor_id)
+    if not competitor:
+        return jsonify({'error': 'Competitor not found'}), 404
+    
+    data = request.get_json()
+    url = data.get('url')
+    title_selector = data.get('title_selector')
+    price_selector = data.get('price_selector')
+    sku_selector = data.get('sku_selector')
+    
+    result = SiteParsingService.verify_selectors(
+        competitor_id=competitor_id,
+        url=url,
+        title_selector=title_selector,
+        price_selector=price_selector,
+        sku_selector=sku_selector
+    )
+    
+    return jsonify(result), 200
+
+
+@analysis_bp.route('/link', methods=['POST'])
+@jwt_required()
+def link_products():
+    data = request.get_json()
+    
+    analysis_id = data.get('analysis_id')
+    user_product_id = data.get('user_product_id')
+    competitor_product_id = data.get('competitor_product_id')
+    
+    if not all([analysis_id, user_product_id, competitor_product_id]):
+        return jsonify({'error': 'All IDs are required'}), 400
+    
+    link = ProductLinkService.link_products(
+        analysis_id=analysis_id,
+        user_product_id=user_product_id,
+        competitor_product_id=competitor_product_id
+    )
+    
+    return jsonify({
+        'message': 'Products linked successfully',
+        'link': link.to_dict()
+    }), 201
+
+
+@analysis_bp.route('/link/<int:link_id>', methods=['DELETE'])
+@jwt_required()
+def unlink_products(link_id):
+    if ProductLinkService.unlink_products(link_id):
+        return jsonify({'message': 'Products unlinked successfully'}), 200
+    
+    return jsonify({'error': 'Link not found'}), 404
+
+
+@analysis_bp.route('/yandex-xml-status', methods=['GET'])
+@jwt_required()
+def yandex_xml_status():
+    return jsonify({
+        'configured': YandexXMLParser.is_configured(),
+        'docs_url': 'https://xml.yandex.ru/'
+    }), 200
+
+
+@analysis_bp.route('/yandex-xml-config', methods=['PUT'])
+@jwt_required()
+def update_yandex_xml_config():
+    data = request.get_json()
+    key = data.get('key', '')
+    folder_id = data.get('folder_id', '')
+    enabled = data.get('enabled', False)
+
+    config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'config', 'yandex_xml.json')
+    cfg = {'key': key, 'folder_id': folder_id, 'enabled': enabled}
+    with open(config_path, 'w', encoding='utf-8') as f:
+        json.dump(cfg, f, indent=2, ensure_ascii=False)
+
+    return jsonify({'message': 'Настройки Яндекс API сохранены', 'configured': bool(key and enabled)}), 200
+
+
+@analysis_bp.route('/check-site', methods=['POST'])
+@jwt_required()
+def check_site():
+    data = request.get_json()
+    url = data.get('url', '').strip()
+    
+    if not url:
+        return jsonify({'available': False, 'message': 'URL не указан'}), 400
+    
+    if not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+    
+    try:
+        response = requests.get(
+            url,
+            timeout=10,
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        )
+        if response.status_code == 200:
+            return jsonify({'available': True, 'message': 'Сайт доступен'}), 200
+        else:
+            return jsonify({
+                'available': False, 
+                'message': f'Сайт вернул код {response.status_code}'
+            }), 200
+    except requests.exceptions.Timeout:
+        return jsonify({'available': False, 'message': 'Превышен таймаут подключения'}), 200
+    except requests.exceptions.ConnectionError:
+        return jsonify({'available': False, 'message': 'Ошибка подключения к сайту'}), 200
+    except Exception as e:
+        return jsonify({'available': False, 'message': f'Ошибка: {str(e)}'}), 200
+
+
+@analysis_bp.route('/<int:analysis_id>/report', methods=['GET'])
+@jwt_required()
+def get_report(analysis_id):
+    current_user_id = get_jwt_identity()
+    analysis = AnalysisService.get_analysis_by_id(analysis_id, current_user_id)
+    
+    if not analysis:
+        return jsonify({'error': 'Analysis not found'}), 404
+    
+    competitors = CompetitorService.get_competitors(analysis_id)
+    product_links = ProductLinkService.get_analysis_links(analysis_id)
+    
+    report = {
+        'analysis_id': analysis.id,
+        'created_at': analysis.created_at.isoformat(),
+        'region': analysis.region,
+        'data': []
+    }
+    
+    user_competitor = next((c for c in competitors if c.is_user_site), None)
+    
+    for link in product_links:
+        user_prod = link.user_product
+        comp_prod = link.competitor_product
+        
+        if user_prod and comp_prod:
+            competitor = next((c for c in competitors if c.id == comp_prod.competitor_id), None)
+            
+            price_diff = None
+            if user_prod.price and comp_prod.price:
+                price_diff = comp_prod.price - user_prod.price
+            
+            report['data'].append({
+                'competitor': competitor.domain if competitor else 'Unknown',
+                'user_price': user_prod.price,
+                'competitor_price': comp_prod.price,
+                'price_difference': price_diff,
+                'user_product': user_prod.name,
+                'competitor_product': comp_prod.name
+            })
+    
+    return jsonify({'report': report}), 200

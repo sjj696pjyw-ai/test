@@ -1,0 +1,22 @@
+{
+  "aggregators": [
+    "market.yandex.ru",
+    "avito.ru",
+    "cian.ru",
+    "2gis.ru",
+    "drom.ru",
+    "auto.ru",
+    "irr.ru"
+  ],
+  "marketplaces": [
+    "ozon.ru",
+    "wildberries.ru",
+    "dns-shop.ru",
+    "citilink.ru",
+    "eldorado.ru",
+    "technopark.ru",
+    "sbermegamarket.ru",
+    "mvideo.ru",
+    "leroymerlin.ru"
+  ]
+}
