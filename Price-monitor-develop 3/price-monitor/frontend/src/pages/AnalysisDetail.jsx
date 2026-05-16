@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useLocation } from 'react-router-dom'
 import api from '../utils/api'
-import { ArrowLeft, Download, Table, Link as LinkIcon, X, Check, Settings } from 'lucide-react'
+import { ArrowLeft, Download, Table, Link as LinkIcon, X, Check, Settings, Trash2 } from 'lucide-react'
 import { getRegionName } from '../utils/regions'
 import { exportToExcel, exportToCSV, formatPrice, formatDate } from '../utils/export'
 import { PriceComparisonChart, PriceDifferenceChart } from '../components/Charts'
@@ -139,6 +139,7 @@ export default function AnalysisDetail() {
   const [activeTab, setActiveTab] = useState('report')
   const [linkingMode, setLinkingMode] = useState(null)
   const [selectedProduct, setSelectedProduct] = useState(null)
+  const [selectedCompetitorProducts, setSelectedCompetitorProducts] = useState([])
   const [userSiteUrl, setUserSiteUrl] = useState('')
   const [userSiteStatus, setUserSiteStatus] = useState(null)
   const { error: showError } = useToast()
@@ -172,7 +173,6 @@ export default function AnalysisDetail() {
     }
     
     const data = analysis.product_links.map(link => ({
-      'Артикул (SKU)': link.competitor_product?.external_id || 'N/A',
       'Товар конкурента': link.competitor_product?.name || 'N/A',
       'Ваш товар': link.user_product?.name || 'N/A',
       'Ваша цена': link.user_product?.price || 'N/A',
@@ -194,7 +194,6 @@ export default function AnalysisDetail() {
     }
     
     const data = analysis.product_links.map(link => ({
-      'SKU': link.competitor_product?.external_id || 'N/A',
       'Товар конкурента': link.competitor_product?.name || 'N/A',
       'Ваш товар': link.user_product?.name || 'N/A',
       'Ваша цена': link.user_product?.price || 'N/A',
@@ -218,9 +217,46 @@ export default function AnalysisDetail() {
       await fetchAnalysis()
       setLinkingMode(null)
       setSelectedProduct(null)
+      setSelectedCompetitorProducts([])
     } catch (error) {
       console.error('Error linking products:', error)
     }
+  }
+
+  const linkMultipleProducts = async () => {
+    if (!selectedProduct || selectedCompetitorProducts.length === 0) return
+    try {
+      for (const compProductId of selectedCompetitorProducts) {
+        await api.post('/analysis/link', {
+          analysis_id: parseInt(id),
+          user_product_id: selectedProduct.id,
+          competitor_product_id: compProductId
+        })
+      }
+      await fetchAnalysis()
+      setLinkingMode(null)
+      setSelectedProduct(null)
+      setSelectedCompetitorProducts([])
+    } catch (error) {
+      console.error('Error linking products:', error)
+    }
+  }
+
+  const unlinkProducts = async (linkId) => {
+    try {
+      await api.delete(`/analysis/unlink/${linkId}`)
+      await fetchAnalysis()
+    } catch (error) {
+      console.error('Error unlinking products:', error)
+    }
+  }
+
+  const toggleCompetitorProductSelection = (productId) => {
+    setSelectedCompetitorProducts(prev => 
+      prev.includes(productId) 
+        ? prev.filter(id => id !== productId)
+        : [...prev, productId]
+    )
   }
 
   if (loading) {
@@ -340,7 +376,6 @@ export default function AnalysisDetail() {
                 <table className="w-full">
                   <thead className="bg-gray-50 dark:bg-gray-800">
                     <tr>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">SKU</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Ваш товар</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Ваша цена</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Товар конкурента</th>
@@ -350,10 +385,7 @@ export default function AnalysisDetail() {
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                     {analysis.product_links.map((link) => (
-                      <tr key={link.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                        <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
-                          {link.competitor_product?.external_id || '-'}
-                        </td>
+                      <tr key={link.id} className="hover:bg-gray-50 dark:hover:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                         <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                           {link.user_product?.name || 'N/A'}
                         </td>
@@ -456,13 +488,10 @@ export default function AnalysisDetail() {
               {userCompetitor.products?.length > 0 ? (
                 <div className="space-y-2 max-h-96 overflow-y-auto">
                   {userCompetitor.products.map(product => (
-                    <div key={product.id} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <div key={product.id} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border-b border-gray-200 dark:border-gray-700">
                       <p className="font-medium text-gray-900 dark:text-gray-100">{product.name}</p>
                       <div className="flex items-center space-x-4 mt-1">
                         <p className="text-primary-600 dark:text-primary-400 font-semibold">{formatPrice(product.price)}</p>
-                        {product.external_id && (
-                          <span className="text-xs text-gray-500 dark:text-gray-400">SKU: {product.external_id}</span>
-                        )}
                       </div>
                     </div>
                   ))}
@@ -579,7 +608,7 @@ export default function AnalysisDetail() {
               <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
                 Выбранный товар: <strong>{selectedProduct.name}</strong>
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Выберите товар конкурента:</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Выберите товары конкурента (можно несколько):</p>
               <div className="space-y-4 max-h-96 overflow-y-auto">
                 {competitorList.map(competitor => (
                   competitor.products?.length > 0 && (
@@ -599,10 +628,23 @@ export default function AnalysisDetail() {
                         {competitor.products.map(product => (
                           <button
                             key={product.id}
-                            onClick={() => linkProducts(selectedProduct.id, product.id)}
-                            className="p-3 text-left rounded-lg border-2 border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 hover:border-primary-500 transition-all flex items-center justify-between w-full"
+                            onClick={() => toggleCompetitorProductSelection(product.id)}
+                            className={`p-3 text-left rounded-lg border-2 transition-all flex items-center justify-between w-full ${
+                              selectedCompetitorProducts.includes(product.id)
+                                ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
+                                : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 hover:border-primary-500'
+                            }`}
                           >
-                            <div>
+                            <div className="flex items-center space-x-3">
+                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                                selectedCompetitorProducts.includes(product.id)
+                                  ? 'border-primary-500 bg-primary-500'
+                                  : 'border-gray-300'
+                              }`}>
+                                {selectedCompetitorProducts.includes(product.id) && (
+                                  <Check className="h-3 w-3 text-white" />
+                                )}
+                              </div>
                               <p className="font-medium text-gray-900 dark:text-gray-100">{product.name}</p>
                             </div>
                             <span className="text-primary-600 dark:text-primary-400 font-semibold">{formatPrice(product.price)}</span>
@@ -613,6 +655,19 @@ export default function AnalysisDetail() {
                   )
                 ))}
               </div>
+              {selectedCompetitorProducts.length > 0 && (
+                <div className="mt-4 flex items-center justify-between">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Выбрано товаров: <strong>{selectedCompetitorProducts.length}</strong>
+                  </p>
+                  <button
+                    onClick={linkMultipleProducts}
+                    className="btn-primary"
+                  >
+                    Связать ({selectedCompetitorProducts.length})
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -634,7 +689,7 @@ export default function AnalysisDetail() {
           {analysis.product_links?.length > 0 ? (
             <div className="space-y-2">
               {analysis.product_links.map(link => (
-                <div key={link.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <div key={link.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border-b border-gray-200 dark:border-gray-700">
                   <div className="flex items-center space-x-4 flex-1">
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm truncate text-gray-900 dark:text-gray-100">{link.user_product?.name}</p>
@@ -646,14 +701,13 @@ export default function AnalysisDetail() {
                       <p className="text-xs text-gray-500 dark:text-gray-400">{formatPrice(link.competitor_product?.price)}</p>
                     </div>
                   </div>
-                  <span className={`font-medium ml-4 ${
-                    link.price_difference >= 0 ? 'text-red-600 dark:text-red-400' : 
-                    link.price_difference < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'
-                  }`}>
-                    {link.price_difference !== null 
-                      ? `${link.price_difference >= 0 ? '+' : '-'}${formatPrice(Math.abs(link.price_difference))}`
-                      : 'N/A'}
-                  </span>
+                  <button
+                    onClick={() => unlinkProducts(link.id)}
+                    className="ml-4 p-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                    title="Удалить связь"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
               ))}
             </div>
@@ -697,13 +751,10 @@ export default function AnalysisDetail() {
                 {comp.products?.length > 0 ? (
                   <div className="space-y-2 max-h-96 overflow-y-auto">
                     {comp.products.map(product => (
-                      <div key={product.id} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div key={product.id} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border-b border-gray-200 dark:border-gray-700">
                         <p className="font-medium text-gray-900 dark:text-gray-100">{product.name}</p>
                         <div className="flex items-center space-x-4 mt-1">
                           <p className="text-gray-600 dark:text-gray-400">{formatPrice(product.price)}</p>
-                          {product.external_id && (
-                            <span className="text-xs text-gray-500 dark:text-gray-400">SKU: {product.external_id}</span>
-                          )}
                         </div>
                       </div>
                     ))}

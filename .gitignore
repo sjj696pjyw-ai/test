@@ -6,10 +6,12 @@ venv/
 __pycache__/
 .mypy_cache/
 .pytest_cache/
+dist/
+build/
 target/
 .gradle/
 
-# Compiled/Binary files
+# Compiled files
 *.pyc
 *.class
 *.o
@@ -20,10 +22,6 @@ target/
 *.obj
 *.out
 
-# Build artifacts
-dist/
-build/
-
 # Editor/IDE files
 .vscode/
 .idea/
@@ -31,7 +29,7 @@ build/
 *.swo
 *.tmp
 
-# System/Environment files
+# System files
 .DS_Store
 Thumbs.db
 .env
