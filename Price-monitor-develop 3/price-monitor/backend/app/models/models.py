@@ -35,6 +35,7 @@ class Analysis(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    name = db.Column(db.String(255), nullable=True)  # Custom name for the analysis
     analysis_type = db.Column(db.String(20), nullable=False)
     region = db.Column(db.String(100), nullable=False)
     queries = db.Column(db.Text)
@@ -48,6 +49,7 @@ class Analysis(db.Model):
     def to_dict(self):
         return {
             'id': self.id,
+            'name': self.name,
             'analysis_type': self.analysis_type,
             'region': self.region,
             'queries': self.queries.split('\n') if self.queries else [],
