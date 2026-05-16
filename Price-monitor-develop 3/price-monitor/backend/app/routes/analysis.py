@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 import requests
 import os
 import json
-from ..models import db, Competitor
+from ..models import db, Competitor, Analysis
 from ..services import (
     AnalysisService, CompetitorService, ProductService,
     ProductLinkService, SearchService, SiteParsingService
@@ -19,41 +19,48 @@ analysis_bp = Blueprint('analysis', __name__, url_prefix='/api/analysis')
 def create_analysis():
     current_user_id = get_jwt_identity()
     data = request.get_json()
-    
+
     if not data:
         return jsonify({'error': 'No data provided'}), 400
-    
+
     analysis_type = data.get('type')
     region = data.get('region')
-    
+    name = data.get('name')  # Optional custom name
+
     if not analysis_type or not region:
         return jsonify({'error': 'Analysis type and region are required'}), 400
-    
+
+    # Get the next analysis number for this user
+    user_analyses_count = AnalysisService.get_user_analyses(current_user_id).count()
+    default_name = f"Анализ #{user_analyses_count + 1}"
+    analysis_name = name if name else default_name
+
     if analysis_type == 'auto':
         queries = data.get('queries', [])
         positions = data.get('positions', 5)
         result_types = data.get('result_types', ['organic'])
-        
+
         if not queries:
             return jsonify({'error': 'Поисковые запросы обязательны для автоматического анализа'}), 400
-        
+
         user_site = data.get('user_site')
-        
+
         analysis = AnalysisService.create_analysis(
             user_id=current_user_id,
             analysis_type='auto',
             region=region,
             queries=queries,
-            user_site=user_site
+            user_site=user_site,
+            name=analysis_name
         )
-        
+
         if user_site:
             CompetitorService.add_competitor(
                 analysis_id=analysis.id,
                 domain=user_site,
                 is_user_site=True
             )
-        
+
         competitors = SearchService.perform_search(
             analysis_id=analysis.id,
             queries=queries,
@@ -61,7 +68,7 @@ def create_analysis():
             result_types=result_types,
             region=region
         )
-        
+
         return jsonify({
             'message': 'Поиск завершен, выберите конкурентов',
             'analysis': analysis.to_dict(),
@@ -69,29 +76,30 @@ def create_analysis():
             'found_competitors': competitors,
             'require_selection': True
         }), 200
-    
+
     elif analysis_type == 'manual':
         user_site = data.get('user_site')
         competitors = data.get('competitors', [])
-        
+
         if not user_site:
             return jsonify({'error': 'User site is required for manual analysis'}), 400
-        
+
         analysis = AnalysisService.create_analysis(
             user_id=current_user_id,
             analysis_type='manual',
             region=region,
-            queries=[]
+            queries=[],
+            name=analysis_name
         )
-        
+
         user_competitor = CompetitorService.add_competitor(
             analysis_id=analysis.id,
             domain=user_site,
             is_user_site=True
         )
-        
+
         saved_competitors = [user_competitor]
-        
+
         for comp in competitors[:3]:
             domain = comp.get('domain')
             if domain and is_excluded_domain(domain):
@@ -102,13 +110,13 @@ def create_analysis():
                 is_user_site=False
             )
             saved_competitors.append(competitor)
-        
+
         return jsonify({
             'message': 'Analysis created successfully',
             'analysis': analysis.to_dict(),
             'competitors': [c.to_dict() for c in saved_competitors]
         }), 201
-    
+
     return jsonify({'error': 'Invalid analysis type'}), 400
 
 
@@ -147,6 +155,28 @@ def get_analysis(analysis_id):
     result['product_links'] = [link.to_dict() for link in product_links]
     
     return jsonify({'analysis': result}), 200
+
+
+@analysis_bp.route('/<int:analysis_id>/name', methods=['PUT'])
+@jwt_required()
+def update_analysis_name(analysis_id):
+    current_user_id = get_jwt_identity()
+    data = request.get_json()
+    
+    if not data or 'name' not in data:
+        return jsonify({'error': 'Name is required'}), 400
+    
+    new_name = data.get('name')
+    
+    analysis = AnalysisService.update_analysis_name(analysis_id, current_user_id, new_name)
+    
+    if not analysis:
+        return jsonify({'error': 'Analysis not found'}), 404
+    
+    return jsonify({
+        'message': 'Analysis name updated successfully',
+        'analysis': analysis.to_dict()
+    }), 200
 
 
 @analysis_bp.route('/<int:analysis_id>', methods=['DELETE'])

@@ -4,13 +4,14 @@ from ..utils import YandexParser, DuckDuckGoParser, MockSearchParser, SiteParser
 
 class AnalysisService:
     @staticmethod
-    def create_analysis(user_id, analysis_type, region, queries, user_site=None):
+    def create_analysis(user_id, analysis_type, region, queries, user_site=None, name=None):
         analysis = Analysis(
             user_id=user_id,
             analysis_type=analysis_type,
             region=region,
             queries='\n'.join(queries) if isinstance(queries, list) else queries,
-            user_site=user_site
+            user_site=user_site,
+            name=name
         )
         db.session.add(analysis)
         db.session.commit()
@@ -35,6 +36,15 @@ class AnalysisService:
             db.session.commit()
             return True
         return False
+
+    @staticmethod
+    def update_analysis_name(analysis_id, user_id, name):
+        analysis = Analysis.query.filter_by(id=analysis_id, user_id=user_id).first()
+        if analysis:
+            analysis.name = name
+            db.session.commit()
+            return analysis
+        return None
 
 
 class CompetitorService:

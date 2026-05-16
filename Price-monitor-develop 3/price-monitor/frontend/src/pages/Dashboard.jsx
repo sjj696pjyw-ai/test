@@ -270,7 +270,7 @@ export default function Dashboard() {
                   </div>
                   {analysis.source_url && (
                     <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2 truncate max-w-md">
-                      {analysis.source_url}
+                      {analysis.name || `Анализ #${analysis.id}`}
                     </h3>
                   )}
                   <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
