@@ -204,8 +204,8 @@ export default function Dashboard() {
             </div>
 
       {analyses.length > 0 && (
-        <div className="grid md:grid-cols-2 gap-6 mb-8">
-          <div className="card">
+        <div className="flex justify-center mb-8">
+          <div className="card w-full max-w-2xl">
             <h3 className="text-lg font-semibold mb-4">История анализов</h3>
             <div className="h-48">
               <AnalysisHistoryChart analyses={analyses} />
