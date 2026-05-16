@@ -243,11 +243,25 @@ export default function AnalysisDetail() {
   }
 
   const unlinkProducts = async (linkId) => {
+    if (isDemo) {
+      // Для демо-режима просто обновляем локальное состояние
+      setAnalysis(prev => ({
+        ...prev,
+        product_links: prev.product_links.filter(link => link.id !== linkId)
+      }))
+      return
+    }
+    
     try {
       await api.delete(`/analysis/unlink/${linkId}`)
       await fetchAnalysis()
     } catch (error) {
       console.error('Error unlinking products:', error)
+      // Если API недоступно, обновляем локальное состояние
+      setAnalysis(prev => ({
+        ...prev,
+        product_links: prev.product_links.filter(link => link.id !== linkId)
+      }))
     }
   }
 
@@ -687,29 +701,39 @@ export default function AnalysisDetail() {
 
           <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Текущие связи ({analysis.product_links?.length || 0})</h4>
           {analysis.product_links?.length > 0 ? (
-            <div className="space-y-2">
-              {analysis.product_links.map(link => (
-                <div key={link.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border-b border-gray-200 dark:border-gray-700">
-                  <div className="flex items-center space-x-4 flex-1">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate text-gray-900 dark:text-gray-100">{link.user_product?.name}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{formatPrice(link.user_product?.price)}</p>
-                    </div>
-                    <span className="text-gray-400 dark:text-gray-500">↔</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate text-gray-900 dark:text-gray-100">{link.competitor_product?.name}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{formatPrice(link.competitor_product?.price)}</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => unlinkProducts(link.id)}
-                    className="ml-4 p-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
-                    title="Удалить связь"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 dark:bg-gray-800">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">Мои товары</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">Товары конкурента</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">Действия</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {analysis.product_links.map(link => (
+                    <tr key={link.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                      <td className="px-4 py-3 align-top">
+                        <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{link.user_product?.name || 'N/A'}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{formatPrice(link.user_product?.price)}</p>
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{link.competitor_product?.name || 'N/A'}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{formatPrice(link.competitor_product?.price)}</p>
+                      </td>
+                      <td className="px-4 py-3 align-top text-right">
+                        <button
+                          onClick={() => unlinkProducts(link.id)}
+                          className="p-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                          title="Удалить связь"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : (
             <p className="text-gray-500 dark:text-gray-400">Нет связанных товаров</p>
