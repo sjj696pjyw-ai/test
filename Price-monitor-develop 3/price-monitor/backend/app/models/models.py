@@ -124,7 +124,7 @@ class ProductLink(db.Model):
             'user_product': self.user_product.to_dict() if self.user_product else None,
             'competitor_product': self.competitor_product.to_dict() if self.competitor_product else None,
             'price_difference': (
-                (self.competitor_product.price - self.user_product.price) 
+                (self.user_product.price - self.competitor_product.price) 
                 if self.user_product and self.competitor_product and self.user_product.price 
                 else None
             )
