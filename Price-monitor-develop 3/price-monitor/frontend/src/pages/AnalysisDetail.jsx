@@ -291,16 +291,6 @@ export default function AnalysisDetail() {
             Отчёт
           </button>
           <button
-            onClick={() => setActiveTab('charts')}
-            className={`pb-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'charts'
-                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600'
-            }`}
-          >
-            Графики
-          </button>
-          <button
             onClick={() => setActiveTab('products')}
             className={`pb-4 px-1 border-b-2 font-medium text-sm ${
               activeTab === 'products'
@@ -308,17 +298,7 @@ export default function AnalysisDetail() {
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600'
             }`}
           >
-            Товары ({analysis.competitors?.reduce((acc, c) => acc + (c.products?.length || 0), 0) || 0})
-          </button>
-          <button
-            onClick={() => setActiveTab('linking')}
-            className={`pb-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'linking'
-                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600'
-            }`}
-          >
-            Связывание ({analysis.product_links?.length || 0})
+            Ваши товары ({userCompetitor?.products?.length || 0})
           </button>
           <button
             onClick={() => setActiveTab('competitors')}
@@ -329,6 +309,16 @@ export default function AnalysisDetail() {
             }`}
           >
             Конкуренты ({competitorList.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('linking')}
+            className={`pb-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'linking'
+                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600'
+            }`}
+          >
+            Связывание ({analysis.product_links?.length || 0})
           </button>
         </nav>
       </div>
@@ -342,7 +332,7 @@ export default function AnalysisDetail() {
               <div className="text-center py-8">
                 <p className="text-gray-500 dark:text-gray-400 mb-4">Нет данных для отображения</p>
                 <p className="text-sm text-gray-400 dark:text-gray-500">
-                  Сначала добавьте товары своего сайта через <button onClick={() => setActiveTab('products')} className="text-primary-600 dark:text-primary-400 hover:underline font-medium">вкладку "Товары"</button> (настройте селекторы и соберите товары), затем свяжите их с товарами конкурентов на вкладке "Связывание"
+                  Сначала добавьте товары своего сайта через <button onClick={() => setActiveTab('products')} className="text-primary-600 dark:text-primary-400 hover:underline font-medium">вкладку "Ваши товары"</button> (настройте селекторы и соберите товары), затем <button onClick={() => setActiveTab('competitors')} className="text-primary-600 dark:text-primary-400 hover:underline font-medium">добавьте товары конкурентов</button> и после свяжите через <button onClick={() => setActiveTab('linking')} className="text-primary-600 dark:text-primary-400 hover:underline font-medium">раздел "Связывание"</button>
                 </p>
               </div>
             ) : (
