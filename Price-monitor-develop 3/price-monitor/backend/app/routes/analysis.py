@@ -330,7 +330,7 @@ def link_products():
     }), 201
 
 
-@analysis_bp.route('/link/<int:link_id>', methods=['DELETE'])
+@analysis_bp.route('/unlink/<int:link_id>', methods=['DELETE'])
 @jwt_required()
 def unlink_products(link_id):
     if ProductLinkService.unlink_products(link_id):
