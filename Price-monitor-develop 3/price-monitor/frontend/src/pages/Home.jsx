@@ -1,4 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import {
   BarChart3, Search, TrendingUp, Clock, Shield, Zap,
   Globe, MousePointerClick, Database, Download, Smartphone,
@@ -8,6 +9,7 @@ import {
 
 export default function Home() {
   const navigate = useNavigate()
+  const { user } = useAuth()
 
   const handleDemoClick = () => {
     navigate('/dashboard', { state: { demo: true } })
@@ -34,13 +36,15 @@ export default function Home() {
                 и показывает, кто дешевле, а кто дороже — всё автоматически.
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
-                <button
-                  onClick={handleDemoClick}
-                  className="inline-flex items-center justify-center bg-primary-600 text-white px-8 py-3.5 rounded-xl font-semibold hover:bg-primary-700 transition-all shadow-lg shadow-primary-900/20 group"
-                >
-                  Демо-режим
-                  <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
-                </button>
+                {!user && (
+                  <button
+                    onClick={handleDemoClick}
+                    className="inline-flex items-center justify-center bg-primary-600 text-white px-8 py-3.5 rounded-xl font-semibold hover:bg-primary-700 transition-all shadow-lg shadow-primary-900/20 group"
+                  >
+                    Демо-режим
+                    <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                  </button>
+                )}
                 <Link
                   to="/login"
                   className="inline-flex items-center justify-center border-2 border-primary-300 dark:border-white/30 text-primary-700 dark:text-white px-8 py-3.5 rounded-xl font-semibold hover:bg-primary-50 dark:hover:bg-white/10 transition-colors"
@@ -298,37 +302,39 @@ export default function Home() {
       </section>
 
       {/* CTA */}
-      <section className="relative overflow-hidden py-24 bg-gradient-to-br from-primary-500 to-primary-700 dark:from-primary-600 dark:via-primary-700 dark:to-primary-800 text-white">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PHBhdGggZD0iTTM2IDM0djItSDI0di0yaDEyek0zNiAyNHYySDI0di0yaDEyeiIvPjwvZz48L2c+PC9zdmc+')] opacity-20 dark:opacity-30"></div>
-        <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl sm:text-4xl font-bold mb-6">
-            Готовы попробовать?
-          </h2>
-          <p className="text-white/80 dark:text-primary-100 mb-10 text-lg max-w-2xl mx-auto">
-            Создайте первый анализ бесплатно. Никакой привязки карты — просто начните мониторинг цен конкурентов.
-          </p>
-          <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <button
-              onClick={handleDemoClick}
-              className="inline-flex items-center justify-center bg-white text-primary-700 px-8 py-3.5 rounded-xl font-semibold hover:bg-primary-50 transition-all shadow-lg shadow-primary-900/20 group"
-            >
-              Попробовать демо
-              <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
-            </button>
-            <Link
-              to="/register"
-              className="inline-flex items-center justify-center border-2 border-white/40 text-white px-8 py-3.5 rounded-xl font-semibold hover:bg-white/10 transition-colors"
-            >
-              Создать аккаунт
-            </Link>
+      {!user && (
+        <section className="relative overflow-hidden py-24 bg-gradient-to-br from-primary-500 to-primary-700 dark:from-primary-600 dark:via-primary-700 dark:to-primary-800 text-white">
+          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PHBhdGggZD0iTTM2IDM0djItSDI0di0yaDEyek0zNiAyNHYySDI0di0yaDEyeiIvPjwvZz48L2c+PC9zdmc+')] opacity-20 dark:opacity-30"></div>
+          <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <h2 className="text-3xl sm:text-4xl font-bold mb-6">
+              Готовы попробовать?
+            </h2>
+            <p className="text-white/80 dark:text-primary-100 mb-10 text-lg max-w-2xl mx-auto">
+              Создайте первый анализ бесплатно. Никакой привязки карты — просто начните мониторинг цен конкурентов.
+            </p>
+            <div className="flex flex-col sm:flex-row justify-center gap-4">
+              <button
+                onClick={handleDemoClick}
+                className="inline-flex items-center justify-center bg-white text-primary-700 px-8 py-3.5 rounded-xl font-semibold hover:bg-primary-50 transition-all shadow-lg shadow-primary-900/20 group"
+              >
+                Попробовать демо
+                <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
+              </button>
+              <Link
+                to="/register"
+                className="inline-flex items-center justify-center border-2 border-white/40 text-white px-8 py-3.5 rounded-xl font-semibold hover:bg-white/10 transition-colors"
+              >
+                Создать аккаунт
+              </Link>
+            </div>
+            <div className="mt-8 flex items-center justify-center gap-6 text-sm text-white/70 dark:text-primary-200">
+              <span className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> Без карты</span>
+              <span className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> Без ограничений</span>
+              <span className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> 1 клик</span>
+            </div>
           </div>
-          <div className="mt-8 flex items-center justify-center gap-6 text-sm text-white/70 dark:text-primary-200">
-            <span className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> Без карты</span>
-            <span className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> Без ограничений</span>
-            <span className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> 1 клик</span>
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
 
 
     </div>
