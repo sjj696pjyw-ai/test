@@ -211,12 +211,6 @@ export default function Dashboard() {
               <AnalysisHistoryChart analyses={analyses} />
             </div>
           </div>
-          <div className="card">
-            <h3 className="text-lg font-semibold mb-4">Распределение типов</h3>
-            <div className="h-48">
-              <CompetitorsDistribution competitors={analyses} />
-            </div>
-          </div>
         </div>
       )}
 
@@ -237,15 +231,15 @@ export default function Dashboard() {
               Все анализы ({filteredAnalyses.length})
             </h2>
             <div className="flex items-center space-x-3">
-              <div className="relative">
+              <div className="relative w-64">
                   <input
                     type="text"
-                    placeholder="Поиск по запросам и регионам..."
+                    placeholder="URL вашего сайта"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="input-field pl-8 py-1.5 text-sm w-56"
+                    className="input-field pl-10 py-2 text-sm w-full"
                   />
-                  <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
               </div>
               <select
                 value={filterType}
@@ -274,6 +268,11 @@ export default function Dashboard() {
                     </span>
                     <span className="text-sm text-gray-500 dark:text-gray-400">{analysis.competitors_count} конкурентов</span>
                   </div>
+                  {analysis.source_url && (
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2 truncate max-w-md">
+                      {analysis.source_url}
+                    </h3>
+                  )}
                   <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
                     <span className="flex items-center space-x-1">
                       <Calendar className="h-4 w-4" />
