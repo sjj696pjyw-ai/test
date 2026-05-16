@@ -434,118 +434,32 @@ export default function AnalysisDetail() {
       )}
 
        {activeTab === 'products' && (
-         <div className="lg:grid-cols-2 gap-6 text-gray-900 dark:text-white">
-           {userCompetitor && (
-             <div className="card">
-                <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
-                  Ваши товары
-                  <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">
-                    ({userCompetitor.products?.length || 0})
-                  </span>
-                  {analysis.user_site && (
-                    <a
-                      href={`https://${analysis.user_site.replace(/^https?:\/\//, '')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm font-normal text-primary-600 dark:text-primary-400 ml-3 hover:underline"
-                    >
-                      {analysis.user_site}
-                    </a>
-                  )}
-                </h3>
-               {userCompetitor.products?.length > 0 ? (
-                 <div className="space-y-2 max-h-96 overflow-y-auto">
-                   {userCompetitor.products.map(product => (
-                     <div key={product.id} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                       <p className="font-medium text-gray-900 dark:text-gray-100">{product.name}</p>
-                       <div className="flex items-center space-x-4 mt-1">
-                         <p className="text-primary-600 dark:text-primary-400 font-semibold">{formatPrice(product.price)}</p>
-                         {product.external_id && (
-                           <span className="text-xs text-gray-500 dark:text-gray-400">SKU: {product.external_id}</span>
-                         )}
-                       </div>
-                     </div>
-                   ))}
-                 </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <p className="text-gray-500 dark:text-gray-400 mb-4">Нет товаров</p>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          URL вашего сайта
-                        </label>
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="text"
-                            value={userSiteUrl}
-                            onChange={(e) => setUserSiteUrl(e.target.value)}
-                            placeholder="Ваш сайт (например: example.ru)"
-                            className="input-field flex-1"
-                          />
-                          <button
-                            onClick={async () => {
-                              const url = userSiteUrl.trim();
-                              if (url) {
-                                try {
-                                  const res = await api.post('/analysis/check-site', { url });
-                                  setUserSiteStatus(res.data.available ? '✅ Сайт доступен' : '❌ Сайт недоступен');
-                                } catch {
-                                  setUserSiteStatus('❌ Ошибка проверки');
-                                }
-                              } else {
-                                setUserSiteStatus('❌ Введите URL сайта');
-                              }
-                            }}
-                            className="btn-secondary whitespace-nowrap"
-                          >
-                            Проверить
-                          </button>
-                          {userSiteStatus && (
-                            <span className="text-sm font-medium whitespace-nowrap">{userSiteStatus}</span>
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          Укажите URL вашего сайта, затем настройте селекторы и соберите товары
-                        </p>
-                        {userCompetitor && (
-                          <Link
-                            to={`/analysis/${id}/competitor/${userCompetitor.id}/selectors`}
-                            className="btn-primary text-sm inline-flex items-center space-x-1 mt-3"
-                          >
-                            <Settings className="h-4 w-4" />
-                            <span>Настроить селекторы и собрать товары</span>
-                          </Link>
-                        )}
-                      </div>
-                    </div>
-                )}
-              </div>
-            )}
-
-          {competitorList.map(competitor => (
-              <div key={competitor.id} className="card">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+        <div className="space-y-6">
+          {userCompetitor && (
+            <div className="card">
+              <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
+                Ваши товары
+                <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">
+                  ({userCompetitor.products?.length || 0})
+                </span>
+                {analysis.user_site && (
                   <a
-                    href={`https://${competitor.domain.replace(/^https?:\/\//, '')}`}
+                    href={`https://${analysis.user_site.replace(/^https?:\/\//, '')}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="hover:underline"
+                    className="text-sm font-normal text-primary-600 dark:text-primary-400 ml-3 hover:underline"
                   >
-                    {competitor.domain}
+                    {analysis.user_site}
                   </a>
-                  <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">
-                    ({competitor.products?.length || 0})
-                  </span>
-                </h3>
-              </div>
-              {competitor.products?.length > 0 ? (
+                )}
+              </h3>
+              {userCompetitor.products?.length > 0 ? (
                 <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {competitor.products.map(product => (
+                  {userCompetitor.products.map(product => (
                     <div key={product.id} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                       <p className="font-medium text-gray-900 dark:text-gray-100">{product.name}</p>
                       <div className="flex items-center space-x-4 mt-1">
-                        <p className="text-gray-600 dark:text-gray-400">{formatPrice(product.price)}</p>
+                        <p className="text-primary-600 dark:text-primary-400 font-semibold">{formatPrice(product.price)}</p>
                         {product.external_id && (
                           <span className="text-xs text-gray-500 dark:text-gray-400">SKU: {product.external_id}</span>
                         )}
@@ -554,12 +468,59 @@ export default function AnalysisDetail() {
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-8">
-                  <p className="text-gray-500 dark:text-gray-400">Нет товаров. Настройте селекторы на вкладке "Конкуренты"</p>
+                <div className="space-y-4">
+                  <p className="text-gray-500 dark:text-gray-400 mb-4">Нет товаров</p>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      URL вашего сайта
+                    </label>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="text"
+                        value={userSiteUrl}
+                        onChange={(e) => setUserSiteUrl(e.target.value)}
+                        placeholder="Ваш сайт (например: example.ru)"
+                        className="input-field flex-1"
+                      />
+                      <button
+                        onClick={async () => {
+                          const url = userSiteUrl.trim();
+                          if (url) {
+                            try {
+                              const res = await api.post('/analysis/check-site', { url });
+                              setUserSiteStatus(res.data.available ? '✅ Сайт доступен' : '❌ Сайт недоступен');
+                            } catch {
+                              setUserSiteStatus('❌ Ошибка проверки');
+                            }
+                          } else {
+                            setUserSiteStatus('❌ Введите URL сайта');
+                          }
+                        }}
+                        className="btn-secondary whitespace-nowrap"
+                      >
+                        Проверить
+                      </button>
+                      {userSiteStatus && (
+                        <span className="text-sm font-medium whitespace-nowrap">{userSiteStatus}</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Укажите URL вашего сайта, затем настройте селекторы и соберите товары
+                    </p>
+                    {userCompetitor && (
+                      <Link
+                        to={`/analysis/${id}/competitor/${userCompetitor.id}/selectors`}
+                        className="btn-primary text-sm inline-flex items-center space-x-1 mt-3"
+                      >
+                        <Settings className="h-4 w-4" />
+                        <span>Настроить селекторы и собрать товары</span>
+                      </Link>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
-          ))}
+          )}
         </div>
       )}
 
@@ -619,30 +580,37 @@ export default function AnalysisDetail() {
                 Выбранный товар: <strong>{selectedProduct.name}</strong>
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Выберите товар конкурента:</p>
-              <div className="grid gap-2">
+              <div className="space-y-4 max-h-96 overflow-y-auto">
                 {competitorList.map(competitor => (
-                  <div key={competitor.id}>
-                    {competitor.products?.map(product => (
-                      <button
-                        key={product.id}
-                        onClick={() => linkProducts(selectedProduct.id, product.id)}
-                        className="p-3 text-left rounded-lg border-2 border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 hover:border-primary-500 transition-all flex items-center justify-between w-full mb-2"
-                      >
-                        <div>
-                          <p className="font-medium text-gray-900 dark:text-gray-100">{product.name}</p>
-                          <a
-                            href={`https://${competitor.domain.replace(/^https?:\/\//, '')}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm text-primary-500 dark:text-primary-400 hover:underline"
+                  competitor.products?.length > 0 && (
+                    <div key={competitor.id} className="mb-4">
+                      <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-2 flex items-center">
+                        <a
+                          href={`https://${competitor.domain.replace(/^https?:\/\//, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary-600 dark:text-primary-400 hover:underline"
+                        >
+                          {competitor.domain}
+                        </a>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">({competitor.products.length} товаров)</span>
+                      </h5>
+                      <div className="grid gap-2">
+                        {competitor.products.map(product => (
+                          <button
+                            key={product.id}
+                            onClick={() => linkProducts(selectedProduct.id, product.id)}
+                            className="p-3 text-left rounded-lg border-2 border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 hover:border-primary-500 transition-all flex items-center justify-between w-full"
                           >
-                            {competitor.domain}
-                          </a>
-                        </div>
-                        <span className="text-primary-600 dark:text-primary-400 font-semibold">{formatPrice(product.price)}</span>
-                      </button>
-                    ))}
-                  </div>
+                            <div>
+                              <p className="font-medium text-gray-900 dark:text-gray-100">{product.name}</p>
+                            </div>
+                            <span className="text-primary-600 dark:text-primary-400 font-semibold">{formatPrice(product.price)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )
                 ))}
               </div>
             </div>
@@ -691,29 +659,28 @@ export default function AnalysisDetail() {
       )}
 
       {activeTab === 'competitors' && (
-        <div className="card">
-          <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Список конкурентов</h3>
+        <div className="space-y-6">
           {competitorList.length > 0 ? (
-            <div className="space-y-3">
-              {competitorList.map((comp, index) => (
-                <div key={comp.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            competitorList.map((comp, index) => (
+              <div key={comp.id} className="card">
+                <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center space-x-4">
                     <span className="w-8 h-8 bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400 rounded-full flex items-center justify-center font-semibold">
                       {index + 1}
                     </span>
-                  <div>
-                       <a
-                         href={`https://${comp.domain}`}
-                         target="_blank"
-                         rel="noopener noreferrer"
-                         className="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 hover:underline"
-                       >
-                         {comp.domain}
-                       </a>
-                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                         {comp.products?.length || 0} товаров • {comp.competitor_type}
-                       </p>
-                     </div>
+                    <div>
+                      <a
+                        href={`https://${comp.domain}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 hover:underline"
+                      >
+                        {comp.domain}
+                      </a>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        {comp.products?.length || 0} товаров • {comp.competitor_type}
+                      </p>
+                    </div>
                   </div>
                   <Link 
                     to={`/analysis/${id}/competitor/${comp.id}/selectors`}
@@ -722,10 +689,31 @@ export default function AnalysisDetail() {
                     Настроить
                   </Link>
                 </div>
-              ))}
-            </div>
+                {comp.products?.length > 0 ? (
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {comp.products.map(product => (
+                      <div key={product.id} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <p className="font-medium text-gray-900 dark:text-gray-100">{product.name}</p>
+                        <div className="flex items-center space-x-4 mt-1">
+                          <p className="text-gray-600 dark:text-gray-400">{formatPrice(product.price)}</p>
+                          {product.external_id && (
+                            <span className="text-xs text-gray-500 dark:text-gray-400">SKU: {product.external_id}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500 dark:text-gray-400">Нет товаров. Настройте селекторы</p>
+                  </div>
+                )}
+              </div>
+            ))
           ) : (
-            <p className="text-gray-500 dark:text-gray-400">Конкуренты не найдены</p>
+            <div className="card text-center py-8">
+              <p className="text-gray-500 dark:text-gray-400">Конкуренты не найдены</p>
+            </div>
           )}
         </div>
       )}
