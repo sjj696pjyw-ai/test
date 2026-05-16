@@ -559,7 +559,7 @@ export default function AnalysisDetail() {
                 {userCompetitor?.products?.map(product => (
                   <button
                     key={product.id}
-                    onClick={() => setSelectedProduct(product)}
+                    onClick={() => { setSelectedProduct(product); setLinkingMode('competitor'); }}
                     className={`p-3 text-left rounded-lg border-2 transition-all ${
                       selectedProduct?.id === product.id
                         ? 'border-primary-500 bg-white dark:bg-gray-800'
@@ -617,12 +617,17 @@ export default function AnalysisDetail() {
           )}
 
           {selectedProduct && !linkingMode && (
-            <button
-              onClick={() => setLinkingMode('competitor')}
-              className="btn-primary mb-6"
-            >
-              Выбрать товар конкурента
-            </button>
+            <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg">
+              <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                Выбран товар: <strong>{selectedProduct.name}</strong> ({formatPrice(selectedProduct.price)})
+              </p>
+              <button
+                onClick={() => setLinkingMode('competitor')}
+                className="btn-primary mt-3"
+              >
+                Выбрать товар конкурента
+              </button>
+            </div>
           )}
 
           <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Текущие связи ({analysis.product_links?.length || 0})</h4>
