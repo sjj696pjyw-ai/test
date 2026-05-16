@@ -376,6 +376,16 @@ def check_site():
     if not url.startswith(('http://', 'https://')):
         url = 'https://' + url
     
+    # Проверяем, является ли домен исключенным
+    from ..utils.domains import extract_domain
+    domain = extract_domain(url)
+    if is_excluded_domain(domain):
+        return jsonify({
+            'available': False, 
+            'message': 'Сайт относится к агрегаторам/маркетплейсам/мессенджерам/поисковикам',
+            'is_excluded': True
+        }), 200
+    
     try:
         response = requests.get(
             url,

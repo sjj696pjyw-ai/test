@@ -390,6 +390,10 @@ function NewAnalysisModal({ onClose, onSuccess }) {
     try {
       const res = await api.post('/analysis/check-site', { url: site })
       const data = res.data
+      // Если сайт относится к исключенным, показываем красный тост
+      if (data.is_excluded) {
+        showError(data.message || 'Сайт относится к агрегаторам/маркетплейсам/мессенджерам/поисковикам')
+      }
       setCheckResults(prev => ({ ...prev, [site]: data }))
     } catch (err) {
       setCheckResults(prev => ({ ...prev, [site]: { available: false, message: err.response?.data?.message || err.message } }))
@@ -455,6 +459,24 @@ function NewAnalysisModal({ onClose, onSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    
+    // Проверяем, не являются ли введенные сайты исключенными
+    const sitesToCheck = []
+    if (userSite) sitesToCheck.push(userSite)
+    competitors.forEach(c => { if (c.trim()) sitesToCheck.push(c.trim()) })
+    
+    for (const site of sitesToCheck) {
+      try {
+        const res = await api.post('/analysis/check-site', { url: site })
+        if (res.data.is_excluded) {
+          showError(res.data.message || 'Сайт относится к агрегаторам/маркетплейсам/мессенджерам/поисковикам')
+          return
+        }
+      } catch (err) {
+        // Игнорируем ошибки проверки, продолжаем
+      }
+    }
+    
     setLoading(true)
     try {
       const data = {
