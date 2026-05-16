@@ -383,6 +383,7 @@ function NewAnalysisModal({ onClose, onSuccess }) {
   const [analysisId, setAnalysisId] = useState(null)
   const [checkResults, setCheckResults] = useState({})
   const [checkingSite, setCheckingSite] = useState(null)
+  const { error: showError } = useToast()
 
   const checkSite = async (site) => {
     if (!site) return
@@ -393,8 +394,10 @@ function NewAnalysisModal({ onClose, onSuccess }) {
       // Если сайт относится к исключенным, показываем красный тост
       if (data.is_excluded) {
         showError(data.message || 'Сайт относится к агрегаторам/маркетплейсам/мессенджерам/поисковикам')
+        setCheckResults(prev => ({ ...prev, [site]: { available: false, is_excluded: true, message: data.message || 'Сайт относится к агрегаторам/маркетплейсам/мессенджерам/поисковикам' } }))
+      } else {
+        setCheckResults(prev => ({ ...prev, [site]: data }))
       }
-      setCheckResults(prev => ({ ...prev, [site]: data }))
     } catch (err) {
       setCheckResults(prev => ({ ...prev, [site]: { available: false, message: err.response?.data?.message || err.message } }))
     } finally {
@@ -470,10 +473,15 @@ function NewAnalysisModal({ onClose, onSuccess }) {
         const res = await api.post('/analysis/check-site', { url: site })
         if (res.data.is_excluded) {
           showError(res.data.message || 'Сайт относится к агрегаторам/маркетплейсам/мессенджерам/поисковикам')
-          return
+          return // Прерываем создание анализа
         }
       } catch (err) {
-        // Игнорируем ошибки проверки, продолжаем
+        // Если ошибка от сервера (например, сайт исключен), тоже прерываем
+        if (err.response?.data?.is_excluded) {
+          showError(err.response.data.message || 'Сайт относится к агрегаторам/маркетплейсам/мессенджерам/поисковикам')
+          return
+        }
+        // Игнорируем другие ошибки проверки, продолжаем
       }
     }
     
