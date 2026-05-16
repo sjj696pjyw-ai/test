@@ -18,5 +18,20 @@
     "sbermegamarket.ru",
     "mvideo.ru",
     "leroymerlin.ru"
+  ],
+  "social_networks": [
+    "vk.com",
+    "youtube.com",
+    "facebook.com",
+    "instagram.com",
+    "ok.ru",
+    "t.me"
+  ],
+  "search_engines": [
+    "google.com",
+    "yandex.ru",
+    "mail.ru",
+    "rambler.ru",
+    "duckduckgo.com"
   ]
 }
