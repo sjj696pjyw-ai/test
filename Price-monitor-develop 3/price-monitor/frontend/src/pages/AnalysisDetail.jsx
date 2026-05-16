@@ -178,7 +178,7 @@ export default function AnalysisDetail() {
       'Ваша цена': link.user_product?.price || 'N/A',
       'Цена конкурента': link.competitor_product?.price || 'N/A',
       'Разница (₽)': link.price_difference !== null 
-        ? `${link.price_difference > 0 ? '+' : ''}${link.price_difference}` 
+        ? `${link.price_difference > 0 ? '+' : '-'}${Math.abs(link.price_difference)}` 
         : 'N/A'
     }))
     
@@ -200,7 +200,7 @@ export default function AnalysisDetail() {
       'Ваша цена': link.user_product?.price || 'N/A',
       'Цена конкурента': link.competitor_product?.price || 'N/A',
       'Разница (₽)': link.price_difference !== null 
-        ? `${link.price_difference > 0 ? '+' : ''}${link.price_difference}` 
+        ? `${link.price_difference > 0 ? '+' : '-'}${Math.abs(link.price_difference)}` 
         : 'N/A'
     }))
     
@@ -371,7 +371,7 @@ export default function AnalysisDetail() {
                           link.price_difference < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-gray-100'
                         }`}>
                           {link.price_difference !== null 
-                            ? `${link.price_difference > 0 ? '+' : ''}${formatPrice(link.price_difference)}`
+                            ? `${link.price_difference > 0 ? '+' : '-'}${formatPrice(Math.abs(link.price_difference))}`
                             : 'N/A'}
                         </td>
                       </tr>
@@ -651,7 +651,7 @@ export default function AnalysisDetail() {
                     link.price_difference < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'
                   }`}>
                     {link.price_difference !== null 
-                      ? `${link.price_difference > 0 ? '+' : ''}${formatPrice(link.price_difference)}`
+                      ? `${link.price_difference > 0 ? '+' : '-'}${formatPrice(Math.abs(link.price_difference))}`
                       : 'N/A'}
                   </span>
                 </div>
