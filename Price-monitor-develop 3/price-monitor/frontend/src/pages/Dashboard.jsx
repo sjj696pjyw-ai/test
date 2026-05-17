@@ -390,10 +390,10 @@ function NewAnalysisModal({ onClose, onSuccess }) {
     try {
       const res = await api.post('/analysis/check-site', { url: site })
       const data = res.data
-      // Если сайт относится к исключенным, показываем красный тост
+      // Если сайт относится к исключенным, показываем только тост, но не сохраняем результат для отображения под кнопкой
       if (data.is_excluded) {
         showError(data.message || 'Сайт относится к агрегаторам/маркетплейсам/мессенджерам/поисковикам')
-        setCheckResults(prev => ({ ...prev, [site]: { available: false, is_excluded: true, message: data.message || 'Сайт относится к агрегаторам/маркетплейсам/мессенджерам/поисковикам' } }))
+        // Не сохраняем результат в checkResults, чтобы текст под кнопкой не отображался
       } else {
         setCheckResults(prev => ({ ...prev, [site]: data }))
       }

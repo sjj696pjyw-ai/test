@@ -590,9 +590,19 @@ export default function AnalysisDetail() {
                           if (url) {
                             try {
                               const res = await api.post('/analysis/check-site', { url });
-                              setUserSiteStatus(res.data.available ? '✅ Сайт доступен' : '❌ Сайт недоступен');
-                            } catch {
-                              setUserSiteStatus('❌ Ошибка проверки');
+                              const data = res.data;
+                              // Если сайт исключен, показываем только тост, не обновляем статус под кнопкой
+                              if (data.is_excluded) {
+                                showError(data.message || 'Сайт относится к агрегаторам/маркетплейсам/мессенджерам/поисковикам');
+                              } else {
+                                setUserSiteStatus(data.available ? '✅ Сайт доступен' : '❌ Сайт недоступен');
+                              }
+                            } catch (err) {
+                              if (err.response?.data?.is_excluded) {
+                                showError(err.response.data.message || 'Сайт относится к агрегаторам/маркетплейсам/мессенджерам/поисковикам');
+                              } else {
+                                setUserSiteStatus('❌ Ошибка проверки');
+                              }
                             }
                           } else {
                             setUserSiteStatus('❌ Введите URL сайта');
