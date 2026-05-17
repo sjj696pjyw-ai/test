@@ -31,7 +31,8 @@ def create_analysis():
         return jsonify({'error': 'Analysis type and region are required'}), 400
 
     # Get the next analysis number for this user
-    user_analyses_count = AnalysisService.get_user_analyses(current_user_id).count()
+    user_analyses = AnalysisService.get_user_analyses(current_user_id)
+    user_analyses_count = len(user_analyses) if user_analyses else 0
     default_name = f"Анализ #{user_analyses_count + 1}"
     analysis_name = name if name else default_name
 
