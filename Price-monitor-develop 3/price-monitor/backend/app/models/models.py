@@ -71,6 +71,9 @@ class Competitor(db.Model):
     title_selector = db.Column(db.String(255))
     price_selector = db.Column(db.String(255))
     sku_selector = db.Column(db.String(255))
+    last_price_update = db.Column(db.DateTime)  # Last successful price update timestamp
+    update_status = db.Column(db.String(50), default='pending')  # pending, success, partial, error
+    update_error_message = db.Column(db.Text)  # Error message if update failed
 
     products = db.relationship('Product', backref='competitor', lazy='dynamic', cascade='all, delete-orphan')
 
@@ -83,7 +86,10 @@ class Competitor(db.Model):
             'is_user_site': self.is_user_site,
             'title_selector': self.title_selector,
             'price_selector': self.price_selector,
-            'sku_selector': self.sku_selector
+            'sku_selector': self.sku_selector,
+            'last_price_update': self.last_price_update.isoformat() if self.last_price_update else None,
+            'update_status': self.update_status,
+            'update_error_message': self.update_error_message
         }
 
 
@@ -96,7 +102,9 @@ class Product(db.Model):
     price = db.Column(db.Float)
     currency = db.Column(db.String(10), default='RUB')
     external_id = db.Column(db.String(255))
+    url = db.Column(db.String(1000))  # Product URL for matching
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)  # Track price changes
 
     def to_dict(self):
         return {
@@ -104,7 +112,31 @@ class Product(db.Model):
             'name': self.name,
             'price': self.price,
             'currency': self.currency,
-            'external_id': self.external_id
+            'external_id': self.external_id,
+            'url': self.url,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+class PriceHistory(db.Model):
+    """Table to store price history for tracking price dynamics"""
+    __tablename__ = 'price_history'
+
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
+    price = db.Column(db.Float, nullable=False)
+    currency = db.Column(db.String(10), default='RUB')
+    recorded_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    product = db.relationship('Product', backref='price_history')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'product_id': self.product_id,
+            'price': self.price,
+            'currency': self.currency,
+            'recorded_at': self.recorded_at.isoformat() if self.recorded_at else None
         }
 
 

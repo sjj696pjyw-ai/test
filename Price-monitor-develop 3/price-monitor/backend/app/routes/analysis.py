@@ -6,7 +6,7 @@ import json
 from ..models import db, Competitor, Analysis
 from ..services import (
     AnalysisService, CompetitorService, ProductService,
-    ProductLinkService, SearchService, SiteParsingService
+    ProductLinkService, SearchService, SiteParsingService, PriceUpdateService
 )
 from ..utils.domains import is_excluded_domain
 from ..utils.yandex_xml_parser import YandexXMLParser
@@ -393,6 +393,86 @@ def update_yandex_xml_config():
         json.dump(cfg, f, indent=2, ensure_ascii=False)
 
     return jsonify({'message': 'Настройки Яндекс API сохранены', 'configured': bool(key and enabled)}), 200
+
+
+@analysis_bp.route('/<int:analysis_id>/update-prices', methods=['POST'])
+@jwt_required()
+def update_analysis_prices(analysis_id):
+    """Update prices for all competitors in an analysis"""
+    current_user_id = get_jwt_identity()
+    analysis = AnalysisService.get_analysis_by_id(analysis_id, current_user_id)
+    
+    if not analysis:
+        return jsonify({'error': 'Анализ не найден'}), 404
+    
+    result = PriceUpdateService.update_analysis_prices(analysis_id)
+    
+    if result['success']:
+        status_code = 200
+        message = 'Цены успешно обновлены'
+        if result.get('partial_count', 0) > 0:
+            message = f"Обновлены цены по {result['success_count']} конкурентам, по {result['partial_count']} - частично"
+    else:
+        status_code = 400
+        message = result.get('error', 'Ошибка обновления цен')
+    
+    return jsonify({
+        'message': message,
+        'result': result
+    }), status_code
+
+
+@analysis_bp.route('/competitor/<int:competitor_id>/update-prices', methods=['POST'])
+@jwt_required()
+def update_competitor_prices(competitor_id):
+    """Update prices for a single competitor"""
+    competitor = Competitor.query.get(competitor_id)
+    
+    if not competitor:
+        return jsonify({'error': 'Конкурент не найден'}), 404
+    
+    # Verify user has access to this competitor's analysis
+    current_user_id = get_jwt_identity()
+    analysis = AnalysisService.get_analysis_by_id(competitor.analysis_id, current_user_id)
+    
+    if not analysis:
+        return jsonify({'error': 'Доступ запрещен'}), 403
+    
+    result = PriceUpdateService.update_competitor_prices(competitor_id)
+    
+    if result['success']:
+        status_code = 200
+        message = 'Цены успешно обновлены'
+    elif result.get('status') == 'rate_limited':
+        status_code = 429
+        message = result.get('error', 'Слишком частые запросы')
+    else:
+        status_code = 400
+        message = result.get('error', 'Ошибка обновления цен')
+    
+    return jsonify({
+        'message': message,
+        'result': result
+    }), status_code
+
+
+@analysis_bp.route('/<int:analysis_id>/price-dynamics', methods=['GET'])
+@jwt_required()
+def get_price_dynamics(analysis_id):
+    """Get price dynamics chart data for an analysis"""
+    current_user_id = get_jwt_identity()
+    analysis = AnalysisService.get_analysis_by_id(analysis_id, current_user_id)
+    
+    if not analysis:
+        return jsonify({'error': 'Анализ не найден'}), 404
+    
+    days = request.args.get('days', 30, type=int)
+    dynamics = PriceUpdateService.get_analysis_price_dynamics(analysis_id, days)
+    
+    return jsonify({
+        'dynamics': dynamics,
+        'days': days
+    }), 200
 
 
 @analysis_bp.route('/check-site', methods=['POST'])
