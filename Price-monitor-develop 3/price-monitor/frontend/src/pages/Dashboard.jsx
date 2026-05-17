@@ -94,10 +94,7 @@ export default function Dashboard() {
       const matchesType = filterType === 'all' || a.analysis_type === filterType
       const searchLower = searchQuery.toLowerCase()
       const matchesSearch = !searchQuery ||
-        a.name?.toLowerCase().includes(searchLower) ||
-        a.queries?.some(q => q.toLowerCase().includes(searchLower)) ||
-        getRegionName(a.region)?.toLowerCase().includes(searchLower) ||
-        a.source_url?.toLowerCase().includes(searchLower)
+        a.name?.toLowerCase().includes(searchLower)
       return matchesType && matchesSearch
     })
   }, [analyses, filterType, searchQuery])
@@ -234,10 +231,10 @@ export default function Dashboard() {
               Все анализы ({filteredAnalyses.length})
             </h2>
             <div className="flex items-center space-x-3">
-              <div className="relative w-72">
+              <div className="relative w-96">
                   <input
                     type="text"
-                    placeholder="Поиск по названию, URL, запросу или региону"
+                    placeholder="Название анализа"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="input-field pl-10 pr-4 py-2 text-sm w-full"
