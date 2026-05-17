@@ -3,7 +3,7 @@ import os
 import base64
 import xml.etree.ElementTree as ET
 import requests
-from .helpers import extract_domain
+from .helpers import extract_domain, is_excluded_domain
 
 
 def _get_api_config():
@@ -79,7 +79,7 @@ class YandexXMLParser:
             for result_type in ('organic', 'ads'):
                 for item in results.get(result_type, []):
                     domain = item['domain']
-                    if _exclude_domain(domain):
+                    if is_excluded_domain(domain):
                         continue
                     if domain not in competitors:
                         competitors[domain] = {
@@ -140,13 +140,3 @@ class YandexXMLParser:
         if ns_end != -1:
             return tag[:ns_end + 1]
         return ''
-
-
-def _exclude_domain(domain):
-    """Проверяет, является ли домен исключённым."""
-    from .helpers import EXCLUDED_DOMAINS
-    domain_lower = domain.lower()
-    for exc in EXCLUDED_DOMAINS:
-        if exc in domain_lower:
-            return True
-    return False

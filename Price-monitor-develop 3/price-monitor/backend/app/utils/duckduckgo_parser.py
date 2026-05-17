@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import quote, urlparse, parse_qs, unquote
 import time
 import random
-from .helpers import extract_domain, REAL_UA, get_default_headers, setup_selenium_options
+from .helpers import extract_domain, REAL_UA, get_default_headers, setup_selenium_options, is_excluded_domain
 
 try:
     from selenium import webdriver
@@ -184,7 +184,7 @@ class DuckDuckGoParser:
 
             for item in results.get('organic', []):
                 domain = item['domain']
-                if _exclude_domain(domain):
+                if is_excluded_domain(domain):
                     continue
                 if domain not in competitors:
                     competitors[domain] = {
@@ -198,7 +198,7 @@ class DuckDuckGoParser:
 
             for item in results.get('ads', []):
                 domain = item['domain']
-                if _exclude_domain(domain):
+                if is_excluded_domain(domain):
                     continue
                 if domain not in competitors:
                     competitors[domain] = {
@@ -220,13 +220,3 @@ class DuckDuckGoParser:
                 self.driver.quit()
             except Exception:
                 pass
-
-
-def _exclude_domain(domain):
-    """Проверяет, является ли домен исключённым."""
-    from .helpers import EXCLUDED_DOMAINS
-    domain_lower = domain.lower()
-    for exc in EXCLUDED_DOMAINS:
-        if exc in domain_lower:
-            return True
-    return False

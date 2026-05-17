@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import quote
 import time
 import random
-from .helpers import extract_domain, REAL_UA, get_default_headers, setup_selenium_options
+from .helpers import extract_domain, REAL_UA, get_default_headers, setup_selenium_options, is_excluded_domain
 
 try:
     from selenium import webdriver
@@ -141,7 +141,7 @@ class YandexParser:
             for result_type in result_types or ['organic', 'ads']:
                 for item in results.get(result_type, []):
                     domain = item['domain']
-                    if _exclude_domain(domain):
+                    if is_excluded_domain(domain):
                         continue
                     if domain not in competitors:
                         competitors[domain] = {
@@ -155,13 +155,3 @@ class YandexParser:
                     if result_type not in competitors[domain]['types']:
                         competitors[domain]['types'].append(result_type)
         return list(competitors.values())
-
-
-def _exclude_domain(domain):
-    """Проверяет, является ли домен исключённым."""
-    from .helpers import EXCLUDED_DOMAINS
-    domain_lower = domain.lower()
-    for exc in EXCLUDED_DOMAINS:
-        if exc in domain_lower:
-            return True
-    return False
