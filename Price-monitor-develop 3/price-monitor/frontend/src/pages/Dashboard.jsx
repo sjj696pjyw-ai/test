@@ -370,6 +370,7 @@ function NewAnalysisModal({ onClose, onSuccess }) {
   const [analysisType, setAnalysisType] = useState('auto')
   const [region, setRegion] = useState('213')
   const [regionSearch, setRegionSearch] = useState('')
+  const [analysisName, setAnalysisName] = useState('')
   const [queries, setQueries] = useState('')
   const [positions, setPositions] = useState(5)
   const [resultTypes, setResultTypes] = useState(['organic'])
@@ -494,6 +495,9 @@ function NewAnalysisModal({ onClose, onSuccess }) {
         positions,
         result_types: resultTypes
       }
+      if (analysisName && analysisName.trim()) {
+        data.name = analysisName.trim()
+      }
       if (analysisType === 'manual') {
         data.user_site = userSite
         data.competitors = competitors.filter(c => c.trim()).map(domain => ({ domain: domain.trim() }))
@@ -570,6 +574,17 @@ function NewAnalysisModal({ onClose, onSuccess }) {
             <select value={region} onChange={(e) => setRegion(e.target.value)} className="input-field">
               {filteredRegions.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Название анализа (необязательно)</label>
+            <input
+              type="text"
+              value={analysisName}
+              onChange={(e) => setAnalysisName(e.target.value)}
+              className="input-field"
+              placeholder="Оставьте пустым для автоматического названия"
+            />
           </div>
 
           {analysisType === 'auto' && (
