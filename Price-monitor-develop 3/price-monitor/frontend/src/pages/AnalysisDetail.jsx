@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useLocation } from 'react-router-dom'
 import api from '../utils/api'
-import { ArrowLeft, Download, Table, Link as LinkIcon, X, Check, Settings, Trash2 } from 'lucide-react'
+import { ArrowLeft, Download, Table, Link as LinkIcon, X, Check, Settings, Trash2, Edit3, Save, XCircle } from 'lucide-react'
 import { getRegionName } from '../utils/regions'
 import { exportToExcel, exportToCSV, formatPrice, formatDate } from '../utils/export'
 import { PriceComparisonChart, PriceDifferenceChart } from '../components/Charts'
@@ -142,7 +142,9 @@ export default function AnalysisDetail() {
   const [selectedCompetitorProducts, setSelectedCompetitorProducts] = useState([])
   const [userSiteUrl, setUserSiteUrl] = useState('')
   const [userSiteStatus, setUserSiteStatus] = useState(null)
-  const { error: showError } = useToast()
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [editingName, setEditingName] = useState('')
+  const { error: showError, success } = useToast()
   const isDemo = location.state?.demo === true
 
   useEffect(() => {
@@ -163,6 +165,32 @@ export default function AnalysisDetail() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleUpdateName = async () => {
+    if (!editingName.trim()) {
+      showError('Название не может быть пустым')
+      return
+    }
+    try {
+      await api.put(`/analysis/${id}/name`, { name: editingName.trim() })
+      setAnalysis(prev => ({ ...prev, name: editingName.trim() }))
+      setIsEditingName(false)
+      success('Название анализа обновлено')
+    } catch (error) {
+      console.error('Error updating analysis name:', error)
+      showError('Ошибка при обновлении названия')
+    }
+  }
+
+  const startEditingName = () => {
+    setEditingName(analysis.name || `Анализ #${analysis.id}`)
+    setIsEditingName(true)
+  }
+
+  const cancelEditingName = () => {
+    setIsEditingName(false)
+    setEditingName('')
   }
 
   const handleExportExcel = () => {
@@ -310,7 +338,38 @@ export default function AnalysisDetail() {
         </Link>
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Анализ #{analysis.id}</h1>
+            {isEditingName ? (
+              <div className="flex items-center space-x-2 mb-2">
+                <input
+                  type="text"
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  className="input-field py-1 px-2 text-lg font-bold"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleUpdateName()
+                    if (e.key === 'Escape') cancelEditingName()
+                  }}
+                />
+                <button onClick={handleUpdateName} className="p-1.5 text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30 rounded transition-colors">
+                  <Save className="h-5 w-5" />
+                </button>
+                <button onClick={cancelEditingName} className="p-1.5 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors">
+                  <XCircle className="h-5 w-5" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center space-x-2 mb-2">
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {analysis.name || `Анализ #${analysis.id}`}
+                </h1>
+                {!isDemo && (
+                  <button onClick={startEditingName} className="p-1.5 text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                    <Edit3 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            )}
             <p className="text-gray-600 dark:text-gray-400">
               {formatDate(analysis.created_at)} (UTC) • Регион: {getRegionName(analysis.region)}
             </p>
