@@ -47,7 +47,7 @@ export default function Layout({ children }) {
                     </button>
                     <Link to="/profile" className="flex items-center space-x-1 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">
                       <User className="h-4 w-4" />
-                      <span className="hidden lg:inline">{user.email}</span>
+                      <span className="hidden lg:inline">Профиль</span>
                     </Link>
                     <button onClick={handleLogout} className="btn-secondary flex items-center space-x-1 text-sm">
                       <LogOut className="h-4 w-4" />
