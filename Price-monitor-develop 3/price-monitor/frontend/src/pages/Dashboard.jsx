@@ -92,9 +92,12 @@ export default function Dashboard() {
   const filteredAnalyses = useMemo(() => {
     return analyses.filter(a => {
       const matchesType = filterType === 'all' || a.analysis_type === filterType
+      const searchLower = searchQuery.toLowerCase()
       const matchesSearch = !searchQuery ||
-        a.queries?.some(q => q.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        getRegionName(a.region)?.toLowerCase().includes(searchQuery.toLowerCase())
+        a.name?.toLowerCase().includes(searchLower) ||
+        a.queries?.some(q => q.toLowerCase().includes(searchLower)) ||
+        getRegionName(a.region)?.toLowerCase().includes(searchLower) ||
+        a.source_url?.toLowerCase().includes(searchLower)
       return matchesType && matchesSearch
     })
   }, [analyses, filterType, searchQuery])
@@ -231,13 +234,13 @@ export default function Dashboard() {
               Все анализы ({filteredAnalyses.length})
             </h2>
             <div className="flex items-center space-x-3">
-              <div className="relative w-64">
+              <div className="relative w-72">
                   <input
                     type="text"
-                    placeholder="URL вашего сайта"
+                    placeholder="Поиск по названию, URL, запросу или региону"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="input-field pl-10 py-2 text-sm w-full"
+                    className="input-field pl-10 pr-4 py-2 text-sm w-full"
                   />
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
               </div>
@@ -268,11 +271,9 @@ export default function Dashboard() {
                     </span>
                     <span className="text-sm text-gray-500 dark:text-gray-400">{analysis.competitors_count} конкурентов</span>
                   </div>
-                  {analysis.source_url && (
-                    <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2 truncate max-w-md">
-                      {analysis.name || `Анализ #${analysis.id}`}
-                    </h3>
-                  )}
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2 truncate max-w-md">
+                    {analysis.name || `Анализ #${analysis.id}`}
+                  </h3>
                   <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
                     <span className="flex items-center space-x-1">
                       <Calendar className="h-4 w-4" />
