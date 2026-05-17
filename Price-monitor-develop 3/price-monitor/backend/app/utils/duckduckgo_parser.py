@@ -3,9 +3,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import quote, urlparse, parse_qs, unquote
 import time
 import random
-from .domains import extract_domain
-
-REAL_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+from .helpers import extract_domain, REAL_UA, get_default_headers, setup_selenium_options
 
 try:
     from selenium import webdriver
@@ -34,26 +32,17 @@ DDG_REGION_MAP = {
 class DuckDuckGoParser:
     BASE_URL = 'https://html.duckduckgo.com/html/'
     JS_URL = 'https://duckduckgo.com/'
-    
+
     def __init__(self, region='213', delay=2):
         self.region = DDG_REGION_MAP.get(str(region), 'ru-ru')
         self.delay = delay
         self.session = requests.Session()
-        self.session.headers.update({
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Accept-Encoding': 'gzip, deflate',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'DNT': '1',
-            'User-Agent': REAL_UA
-        })
+        self.session.headers.update(get_default_headers())
         self.driver = None
-    
+
     def search(self, query, positions=5):
         all_results = {'organic': [], 'ads': []}
-        
-        # Try requests-based HTML search first (fast)
+
         try:
             time.sleep(random.uniform(self.delay * 0.5, self.delay * 1.5))
             response = self.session.get(
@@ -68,8 +57,7 @@ class DuckDuckGoParser:
                     all_results['organic'] = results[:positions]
         except Exception:
             pass
-        
-        # Always also try Selenium for ads (DuckDuckGo shows sponsored results in JS-rendered page)
+
         if SELENIUM_AVAILABLE:
             try:
                 selenium_results = self._search_selenium(query, positions)
@@ -79,29 +67,24 @@ class DuckDuckGoParser:
                     all_results['organic'] = selenium_results['organic']
             except Exception as e:
                 print(f"DuckDuckGo selenium error: {e}")
-        
+
         return all_results
-    
+
     def _search_selenium(self, query, positions):
         results = {'organic': [], 'ads': []}
-        
+
         if not self.driver:
             options = ChromeOptions()
-            options.add_argument('--headless')
-            options.add_argument('--no-sandbox')
-            options.add_argument('--disable-dev-shm-usage')
-            options.add_argument('--window-size=1280,1024')
-            options.add_argument(f'user-agent={REAL_UA}')
+            setup_selenium_options(options)
             self.driver = webdriver.Chrome(
                 service=ChromeService(ChromeDriverManager().install()),
                 options=options
             )
-        
+
         search_url = f'{self.JS_URL}?q={quote(query)}&ia=web'
         self.driver.get(search_url)
         time.sleep(random.uniform(2, 4))
-        
-        # Extract organic results
+
         articles = self.driver.find_elements(By.CSS_SELECTOR, 'article[data-testid="result"]')
         for idx, article in enumerate(articles[:positions], 1):
             try:
@@ -118,11 +101,9 @@ class DuckDuckGoParser:
                 })
             except Exception:
                 continue
-        
-        # Extract ad results (DuckDuckGo shows sponsored links with "Ad" badge)
+
         try:
-            # Look for sponsored links - DuckDuckGo uses various selectors for ads
-            ad_links = self.driver.find_elements(By.CSS_SELECTOR, 
+            ad_links = self.driver.find_elements(By.CSS_SELECTOR,
                 '[data-testid="result"][data-ad="true"] a[href], '
                 'article a[data-testid="result-title-a"][href], '
                 '.results--ads a[href], '
@@ -153,9 +134,9 @@ class DuckDuckGoParser:
                     continue
         except Exception:
             pass
-        
+
         return results
-    
+
     def _extract_ddg_url(self, href):
         if not href:
             return ''
@@ -170,11 +151,11 @@ class DuckDuckGoParser:
             if 'uddg' in qs:
                 return unquote(qs['uddg'][0])
         return href
-    
+
     def _parse_page(self, html):
         soup = BeautifulSoup(html, 'lxml')
         results = []
-        
+
         items = soup.select('.result')
         for idx, item in enumerate(items, 1):
             try:
@@ -192,18 +173,18 @@ class DuckDuckGoParser:
                     })
             except Exception:
                 continue
-        
+
         return results
-    
+
     def find_competitors(self, queries, positions=5):
         competitors = {}
-        
+
         for query in queries:
             results = self.search(query, positions)
-            
+
             for item in results.get('organic', []):
                 domain = item['domain']
-                if self._exclude_domain(domain):
+                if _exclude_domain(domain):
                     continue
                 if domain not in competitors:
                     competitors[domain] = {
@@ -214,10 +195,10 @@ class DuckDuckGoParser:
                     }
                 competitors[domain]['found_in_queries'].append(query)
                 competitors[domain]['positions'][query] = item['position']
-            
+
             for item in results.get('ads', []):
                 domain = item['domain']
-                if self._exclude_domain(domain):
+                if _exclude_domain(domain):
                     continue
                 if domain not in competitors:
                     competitors[domain] = {
@@ -230,23 +211,22 @@ class DuckDuckGoParser:
                 competitors[domain]['positions'][query] = item['position']
                 if 'ad' not in competitors[domain]['types']:
                     competitors[domain]['types'].append('ad')
-        
+
         return list(competitors.values())
-    
+
     def __del__(self):
         if self.driver:
             try:
                 self.driver.quit()
             except Exception:
                 pass
-    
-    @staticmethod
-    def _exclude_domain(domain):
-        domain_lower = domain.lower()
-        EXCLUDED = ['google.com', 'yandex.ru', 'yandex.com', 'duckduckgo.com',
-                    'facebook.com', 'instagram.com', 'youtube.com',
-                    'vk.com', 'ok.ru', 't.me', 'mail.ru']
-        for exc in EXCLUDED:
-            if exc in domain_lower:
-                return True
-        return False
+
+
+def _exclude_domain(domain):
+    """Проверяет, является ли домен исключённым."""
+    from .helpers import EXCLUDED_DOMAINS
+    domain_lower = domain.lower()
+    for exc in EXCLUDED_DOMAINS:
+        if exc in domain_lower:
+            return True
+    return False

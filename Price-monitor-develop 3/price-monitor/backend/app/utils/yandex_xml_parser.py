@@ -3,10 +3,14 @@ import os
 import base64
 import xml.etree.ElementTree as ET
 import requests
+from .helpers import extract_domain
 
 
 def _get_api_config():
-    config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'config', 'yandex_xml.json')
+    config_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        'config', 'yandex_xml.json'
+    )
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
             cfg = json.load(f)
@@ -75,7 +79,7 @@ class YandexXMLParser:
             for result_type in ('organic', 'ads'):
                 for item in results.get(result_type, []):
                     domain = item['domain']
-                    if self._exclude_domain(domain):
+                    if _exclude_domain(domain):
                         continue
                     if domain not in competitors:
                         competitors[domain] = {
@@ -97,13 +101,13 @@ class YandexXMLParser:
             root = ET.fromstring(xml_text)
             ns = self._get_namespace(root)
 
-            for doc in root.findall(f'.//{ns}group/{ns}doc'):
+            for doc in root.findall(f'.//{{{ns}}}group/{{{ns}}}doc'):
                 try:
-                    url = doc.findtext(f'{ns}url', '')
-                    title = doc.findtext(f'{ns}title', '')
+                    url = doc.findtext(f'{{{ns}}}url', '')
+                    title = doc.findtext(f'{{{ns}}}title', '')
                     result['organic'].append({
                         'position': len(result['organic']) + 1,
-                        'domain': self._extract_domain(url),
+                        'domain': extract_domain(url),
                         'title': title,
                         'url': url,
                         'type': 'organic',
@@ -111,13 +115,13 @@ class YandexXMLParser:
                 except Exception:
                     continue
 
-            for ad in root.findall(f'.//{ns}ad'):
+            for ad in root.findall(f'.//{{{ns}}}ad'):
                 try:
-                    url = ad.findtext(f'{ns}url', '')
-                    title = ad.findtext(f'{ns}title', '')
+                    url = ad.findtext(f'{{{ns}}}url', '')
+                    title = ad.findtext(f'{{{ns}}}title', '')
                     result['ads'].append({
                         'position': len(result['ads']) + 1,
-                        'domain': self._extract_domain(url),
+                        'domain': extract_domain(url),
                         'title': title,
                         'url': url,
                         'type': 'ad',
@@ -137,25 +141,12 @@ class YandexXMLParser:
             return tag[:ns_end + 1]
         return ''
 
-    @staticmethod
-    def _extract_domain(url):
-        from urllib.parse import urlparse
-        try:
-            parsed = urlparse(url)
-            domain = parsed.netloc
-            if domain.startswith('www.'):
-                domain = domain[4:]
-            return domain
-        except Exception:
-            return url
 
-    @staticmethod
-    def _exclude_domain(domain):
-        domain_lower = domain.lower()
-        EXCLUDED = ['google.com', 'yandex.ru', 'yandex.com', 'duckduckgo.com',
-                    'facebook.com', 'instagram.com', 'youtube.com',
-                    'vk.com', 'ok.ru', 't.me', 'mail.ru']
-        for exc in EXCLUDED:
-            if exc in domain_lower:
-                return True
-        return False
+def _exclude_domain(domain):
+    """Проверяет, является ли домен исключённым."""
+    from .helpers import EXCLUDED_DOMAINS
+    domain_lower = domain.lower()
+    for exc in EXCLUDED_DOMAINS:
+        if exc in domain_lower:
+            return True
+    return False
