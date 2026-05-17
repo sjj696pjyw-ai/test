@@ -1,11 +1,9 @@
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse
 import time
 import random
 import re
-
-REAL_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+from .helpers import REAL_UA, get_default_headers, setup_selenium_options
 
 try:
     from selenium import webdriver
@@ -23,23 +21,17 @@ class SiteParser:
         self.delay = delay
         self.session = requests.Session()
         self.driver = None
-        
+
     def _get_headers(self):
-        return {
-            'User-Agent': REAL_UA,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-        }
+        return get_default_headers()
 
     def _clean_price(self, price_str):
         if not price_str:
             return None
-        # Skip percentage values like "-15%", "скидка 20%"
         if '%' in price_str or 'скидк' in price_str.lower():
             return None
         price_str = re.sub(r'[^\d.,]', '', price_str)
         price_str = price_str.replace(',', '.')
-        # Skip values that are unrealistically small for prices (< 10)
         try:
             val = float(price_str)
             if val < 10:
@@ -56,12 +48,10 @@ class SiteParser:
         return []
 
     def get_page(self, url):
-        # Use Selenium first for JS-heavy e-commerce sites
         if SELENIUM_AVAILABLE:
             html = self._get_page_selenium(url)
             if html and len(html) > 1000:
                 return html
-        # Fallback to requests for simple sites
         html = self._get_page_requests(url)
         if html:
             return html
@@ -81,14 +71,7 @@ class SiteParser:
         try:
             if not self.driver:
                 options = ChromeOptions()
-                options.add_argument('--headless')
-                options.add_argument('--no-sandbox')
-                options.add_argument('--disable-dev-shm-usage')
-                options.add_argument('--window-size=1280,1024')
-                options.add_argument(f'user-agent={REAL_UA}')
-                options.add_argument('--disable-blink-features=AutomationControlled')
-                options.add_experimental_option('excludeSwitches', ['enable-automation'])
-                options.add_experimental_option('useAutomationExtension', False)
+                setup_selenium_options(options)
                 self.driver = webdriver.Chrome(
                     service=ChromeService(ChromeDriverManager().install()),
                     options=options
@@ -99,7 +82,6 @@ class SiteParser:
             self.driver.get(url)
             time.sleep(random.uniform(4, 6))
 
-            # Scroll down to trigger lazy-loaded content
             try:
                 self.driver.execute_script('window.scrollTo(0, document.body.scrollHeight / 2)')
                 time.sleep(1)
@@ -108,7 +90,6 @@ class SiteParser:
             except Exception:
                 pass
 
-            # Close popups and overlays that may block content
             popup_selectors = [
                 'button:contains("Закрыть")', 'button:contains("Close")',
                 'button:contains("Принять")', 'button:contains("Accept")',
@@ -130,7 +111,6 @@ class SiteParser:
                     except Exception:
                         pass
 
-            # Try to click "show more" / "load more" / "view all" buttons
             for _ in range(3):
                 try:
                     btn_selectors = [
@@ -164,25 +144,25 @@ class SiteParser:
     def parse_products(self, html, name_selector, price_selector, sku_selector=None):
         if not html:
             return []
-        
+
         soup = BeautifulSoup(html, 'lxml')
         products = []
-        
+
         name_selectors = name_selector.split(',') if ',' in name_selector else [name_selector]
         price_selectors = price_selector.split(',') if ',' in price_selector else [price_selector]
-        
+
         name_elements = self._try_selectors(soup, name_selectors)
         price_elements = self._try_selectors(soup, price_selectors)
         sku_elements = self._try_selectors(soup, [sku_selector]) if sku_selector else []
-        
+
         max_len = max(len(name_elements), len(price_elements))
-        
+
         for i in range(max_len):
             name = name_elements[i].get_text(strip=True) if i < len(name_elements) else ''
             price_text = price_elements[i].get_text(strip=True) if i < len(price_elements) else ''
             price = self._clean_price(price_text)
             sku = sku_elements[i].get_text(strip=True) if i < len(sku_elements) else None
-            
+
             if name and price is not None:
                 products.append({
                     'name': name,
@@ -190,29 +170,29 @@ class SiteParser:
                     'currency': 'RUB',
                     'external_id': sku
                 })
-        
+
         return products
 
     def verify_selectors(self, html, name_selector, price_selector, sku_selector=None):
         if not html:
             return {'valid': False, 'name_count': 0, 'price_count': 0, 'sample_names': [], 'sample_prices': []}
-        
+
         soup = BeautifulSoup(html, 'lxml')
-        
+
         name_elements = self._try_selectors(soup, [name_selector])
         price_elements = self._try_selectors(soup, [price_selector])
         sku_elements = self._try_selectors(soup, [sku_selector]) if sku_selector else []
-        
+
         def is_percentage(text):
             return '%' in text or 'скидк' in text.lower()
 
         sample_names = [el.get_text(strip=True) for el in name_elements[:5] if el.get_text(strip=True)]
         sample_prices = [el.get_text(strip=True) for el in price_elements[:5] if el.get_text(strip=True) and not is_percentage(el.get_text(strip=True))]
         sample_skus = [el.get_text(strip=True) for el in sku_elements[:5] if el.get_text(strip=True)]
-        
+
         valid = len(name_elements) > 0 and len(price_elements) > 0
         mismatch = abs(len(name_elements) - len(price_elements)) > max(len(name_elements), len(price_elements)) * 0.3 if valid else False
-        
+
         return {
             'valid': valid,
             'name_count': len(name_elements),
@@ -229,12 +209,12 @@ class SiteParser:
         html = self.get_page(url)
         if not html:
             return {'success': False, 'elements': [], 'count': 0}
-        
+
         soup = BeautifulSoup(html, 'lxml')
         elements = soup.select(selector)
-        
+
         sample_texts = [el.get_text(strip=True) for el in elements[:5] if el.get_text(strip=True)]
-        
+
         return {
             'success': len(elements) > 0,
             'count': len(elements),
