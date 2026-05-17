@@ -31,7 +31,11 @@ def is_excluded_domain(domain, custom_excluded=None):
     """Проверяет, является ли домен исключённым."""
     domain_lower = domain.lower()
     
-    # Проверка стандартных исключений
+    # Загружаем пользовательские исключения из конфига
+    if custom_excluded is None:
+        custom_excluded = load_excluded_domains()
+    
+    # Проверка стандартных исключений (поисковики, соцсети)
     for exc in EXCLUDED_DOMAINS:
         if exc in domain_lower or domain_lower.endswith('.' + exc):
             return True
