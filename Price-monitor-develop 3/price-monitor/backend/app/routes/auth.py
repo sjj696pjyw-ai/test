@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, decode_token
 from ..models import db, User
 import re
@@ -168,5 +168,5 @@ def reset_password():
         db.session.commit()
         
         return jsonify({'message': 'Пароль успешно изменён'}), 200
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'Неверный или истёкший токен'}), 400

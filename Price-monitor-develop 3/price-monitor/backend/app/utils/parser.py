@@ -3,14 +3,13 @@ from bs4 import BeautifulSoup
 from urllib.parse import quote
 import time
 import random
-from .helpers import extract_domain, REAL_UA, get_default_headers, setup_selenium_options, is_excluded_domain
+from .helpers import extract_domain, get_default_headers, setup_selenium_options, is_excluded_domain
 
 try:
     from selenium import webdriver
     from selenium.webdriver.chrome.service import Service as ChromeService
     from selenium.webdriver.chrome.options import Options as ChromeOptions
     from webdriver_manager.chrome import ChromeDriverManager
-    from selenium.webdriver.common.by import By
     SELENIUM_AVAILABLE = True
 except ImportError:
     SELENIUM_AVAILABLE = False

@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 import time
 import random
 import re
-from .helpers import REAL_UA, get_default_headers
+from .helpers import get_default_headers
 
 
 class SiteParser:
