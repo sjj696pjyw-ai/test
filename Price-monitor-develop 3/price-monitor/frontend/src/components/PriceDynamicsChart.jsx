@@ -20,7 +20,7 @@ export function PriceDynamicsChart({ data, dateRange }) {
     const userColor = '#22c55e' // green-500
     const competitorColor = '#3b82f6' // blue-500
     
-    // Add user product only once (avoid duplicates)
+    // Add user product only once (avoid duplicates by name only)
     const userKey = `user_${series.product_name}`
     if (!seenProducts.has(userKey)) {
       seenProducts.add(userKey)
@@ -33,7 +33,7 @@ export function PriceDynamicsChart({ data, dateRange }) {
       })
     }
     
-    // Add competitor product
+    // Add competitor product (unique by name + domain combination)
     const competitorKey = `competitor_${series.competitor_name}_${series.competitor_domain}`
     if (!seenProducts.has(competitorKey)) {
       seenProducts.add(competitorKey)
@@ -54,6 +54,7 @@ export function PriceDynamicsChart({ data, dateRange }) {
         chartData.push(existingPoint)
       }
       
+      // Store price with the specific index to keep series separate
       if (point.user_price !== null && point.user_price !== undefined) {
         existingPoint[`user_${index}`] = point.user_price
       }
@@ -88,11 +89,14 @@ export function PriceDynamicsChart({ data, dateRange }) {
 
   // Sort by date
   completeChartData.sort((a, b) => new Date(a.date) - new Date(b.date))
+  
+  // Use completeChartData as display data (keep chronological order)
+  const displayChartData = completeChartData
 
   // Calculate min and max prices for dynamic Y-axis domain
   let minPrice = Infinity
   let maxPrice = -Infinity
-  completeChartData.forEach(point => {
+  displayChartData.forEach(point => {
     Object.keys(point).forEach(key => {
       if (key !== 'date' && point[key] !== null && point[key] !== undefined) {
         minPrice = Math.min(minPrice, point[key])
@@ -118,7 +122,19 @@ export function PriceDynamicsChart({ data, dateRange }) {
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       // Filter to show only entries that have a value at this specific point
-      const validEntries = payload.filter(entry => entry.value !== null && entry.value !== undefined)
+      // and deduplicate by product name + site domain
+      const seenProducts = new Set()
+      const validEntries = payload
+        .filter(entry => entry.value !== null && entry.value !== undefined)
+        .filter(entry => {
+          // Create unique key from product name and color (to distinguish same products on different sites)
+          const productKey = `${entry.name}-${entry.color}`
+          if (seenProducts.has(productKey)) {
+            return false
+          }
+          seenProducts.add(productKey)
+          return true
+        })
       
       if (validEntries.length === 0) return null
       
@@ -204,7 +220,7 @@ export function PriceDynamicsChart({ data, dateRange }) {
     <div className="space-y-4">
       <div className="h-[500px] pt-8 overflow-visible">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={completeChartData} margin={{ top: 20, right: 30, left: 0, bottom: 20 }}>
+          <LineChart data={displayChartData} margin={{ top: 20, right: 30, left: 60, bottom: 20 }}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
             <XAxis 
               dataKey="date" 
@@ -215,15 +231,17 @@ export function PriceDynamicsChart({ data, dateRange }) {
               textAnchor="end"
               height={60}
               tick={{ fill: 'currentColor' }}
+              type="category"
+              scale="point"
             />
             <YAxis 
               className="text-xs text-gray-500 dark:text-gray-400"
               tickFormatter={(value) => `${Math.round(value)} ₽`}
               domain={yAxisDomain}
-              width={70}
+              width={80}
               tick={{ fill: 'currentColor' }}
             />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<CustomTooltip />} cursor={false} />
             <Legend content={<CustomLegend />} />
             {lines}
           </LineChart>
