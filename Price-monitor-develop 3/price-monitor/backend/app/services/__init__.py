@@ -6,6 +6,7 @@ from .analysis_service import (
     SearchService,
     SiteParsingService
 )
+from .price_update_service import PriceUpdateService
 
 __all__ = [
     'AnalysisService',
@@ -13,5 +14,6 @@ __all__ = [
     'ProductService',
     'ProductLinkService',
     'SearchService',
-    'SiteParsingService'
+    'SiteParsingService',
+    'PriceUpdateService'
 ]

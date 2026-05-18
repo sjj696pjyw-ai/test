@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../utils/api'
-import { ArrowLeft, Loader2, Check, AlertCircle, Eye, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Loader2, Check, AlertCircle, Eye, ExternalLink, RefreshCw } from 'lucide-react'
+import { useToast } from '../context/ToastContext'
 
 export default function SelectorsSetup() {
   const { id, competitorId } = useParams()
   const navigate = useNavigate()
+  const { success, error: showError } = useToast()
 
   const [url, setUrl] = useState('')
   const [nameSelector, setNameSelector] = useState('')
@@ -298,6 +300,57 @@ export default function SelectorsSetup() {
               >
                 <ExternalLink className="h-5 w-5" />
                 <span>Сохранить и собрать товары</span>
+              </button>
+            </div>
+          )}
+
+          {/* Button to update selectors and re-parse for existing competitors */}
+          {competitor && competitor.id && (
+            <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+              <h4 className="font-medium text-gray-900 dark:text-white mb-4">Обновить настройки и пересобрать товары</h4>
+              <button
+                onClick={async () => {
+                  if (!url || !nameSelector || !priceSelector) {
+                    setError('Заполните URL и оба селектора')
+                    return
+                  }
+                  setLoading(true)
+                  try {
+                    const response = await api.post(`/analysis/competitor/${competitorId}/reparse`, {
+                      url: url.startsWith('http') ? url : `https://${url}`,
+                      title_selector: nameSelector,
+                      price_selector: priceSelector,
+                      sku_selector: ''
+                    })
+                    setSaved(true)
+                    setVerificationResult({
+                      valid: true,
+                      name_count: response.data.products.length,
+                      price_count: response.data.products.length,
+                      sample_names: response.data.products.slice(0, 3).map(p => p.name),
+                      sample_prices: response.data.products.slice(0, 5).map(p => String(p.price))
+                    })
+                    success('Селекторы обновлены и товары пересобраны')
+                  } catch (err) {
+                    setError(err.response?.data?.error || 'Ошибка обновления')
+                  } finally {
+                    setLoading(false)
+                  }
+                }}
+                disabled={loading || !url || !nameSelector || !priceSelector}
+                className="btn-secondary flex items-center space-x-2"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Обновление...</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-5 w-5" />
+                    <span>Обновить селекторы и пересобрать товары</span>
+                  </>
+                )}
               </button>
             </div>
           )}
