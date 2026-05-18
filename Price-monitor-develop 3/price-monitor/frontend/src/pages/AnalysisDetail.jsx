@@ -158,6 +158,12 @@ export default function AnalysisDetail() {
     fetchAnalysis()
   }, [id])
 
+  useEffect(() => {
+    if (analysis && analysis.product_links && analysis.product_links.length > 0) {
+      fetchPriceDynamics()
+    }
+  }, [analysis])
+
   const fetchAnalysis = async () => {
     if (isDemo && DEMO_DATA[id]) {
       setAnalysis(DEMO_DATA[id])
@@ -222,6 +228,11 @@ export default function AnalysisDetail() {
   }
 
   const fetchPriceDynamics = async () => {
+    if (!analysis?.product_links || analysis.product_links.length === 0) {
+      setPriceDynamicsData(null)
+      return
+    }
+
     if (isDemo) {
       // Demo data for price dynamics
       setPriceDynamicsData([
@@ -246,6 +257,7 @@ export default function AnalysisDetail() {
       setPriceDynamicsData(response.data.dynamics)
     } catch (error) {
       console.error('Error fetching price dynamics:', error)
+      setPriceDynamicsData(null)
     }
   }
 
@@ -482,7 +494,7 @@ export default function AnalysisDetail() {
               </div>
             )}
             <p className="text-gray-600 dark:text-gray-400">
-              {formatDate(analysis.created_at)} (UTC) • Регион: {getRegionName(analysis.region)}
+              {formatDate(analysis.created_at)} {new Date(analysis.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} (UTC) • Регион: {getRegionName(analysis.region)}
             </p>
             {/* Price update status for analysis */}
             {!isDemo && (userCompetitor?.products?.length > 0 || competitorList.some(c => c.products?.length > 0)) && (
@@ -497,7 +509,7 @@ export default function AnalysisDetail() {
                 </button>
                 {userCompetitor?.last_price_update && (
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Цены актуальны на {new Date(userCompetitor.last_price_update).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })} (UTC)
+                    Цены актуальны на {new Date(userCompetitor.last_price_update).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })} {new Date(userCompetitor.last_price_update).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} (UTC)
                   </p>
                 )}
               </div>
@@ -567,23 +579,17 @@ export default function AnalysisDetail() {
           {analysis.product_links && analysis.product_links.length > 0 && (
             <div className="card">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">График динамики цен</h3>
-                <button
-                  onClick={fetchPriceDynamics}
-                  className="btn-secondary text-sm flex items-center space-x-2"
-                  disabled={!priceDynamicsData}
-                >
-                  <RefreshCw className={`h-4 w-4 ${!priceDynamicsData ? 'animate-spin' : ''}`} />
-                  <span>Загрузить график</span>
-                </button>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  График динамики цен
+                </h3>
               </div>
-              {priceDynamicsData ? (
+              {priceDynamicsData && priceDynamicsData.length > 0 ? (
                 <PriceDynamicsChart data={priceDynamicsData} />
               ) : (
                 <div className="text-center py-8">
-                  <p className="text-gray-500 dark:text-gray-400">Нажмите "Загрузить график" для отображения динамики цен</p>
+                  <p className="text-gray-500 dark:text-gray-400">Нет данных для построения графика</p>
                   <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
-                    График показывает изменение цен по связанным товарам с шагом в сутки
+                    График появится автоматически, когда у вас и конкурентов будут товары с историей цен
                   </p>
                 </div>
               )}
@@ -740,12 +746,19 @@ export default function AnalysisDetail() {
               {/* Display domain above price actuality */}
               {userCompetitor.domain && (
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                  Домен: <span className="font-medium">{userCompetitor.domain}</span>
+                  <a
+                    href={`https://${userCompetitor.domain.replace(/^https?:\/\//, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 hover:underline"
+                  >
+                    {userCompetitor.domain}
+                  </a>
                 </p>
               )}
               {userCompetitor.last_price_update && (
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                  Цены актуальны на {new Date(userCompetitor.last_price_update).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })} (UTC)
+                  Цены актуальны на {new Date(userCompetitor.last_price_update).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })} {new Date(userCompetitor.last_price_update).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} (UTC)
                 </p>
               )}
               {userCompetitor.products?.length > 0 ? (
@@ -1023,7 +1036,7 @@ export default function AnalysisDetail() {
                         {comp.products?.length || 0} товаров • {comp.competitor_type}
                         {comp.last_price_update && (
                           <span className="ml-2 text-xs">
-                            Цены актуальны на {new Date(comp.last_price_update).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })} (UTC)
+                            Цены актуальны на {new Date(comp.last_price_update).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })} {new Date(comp.last_price_update).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} (UTC)
                           </span>
                         )}
                       </p>
