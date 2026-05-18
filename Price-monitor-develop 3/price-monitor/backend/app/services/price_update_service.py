@@ -137,7 +137,6 @@ class PriceUpdateService:
                     
                     # Update price
                     product.price = new_price
-                    product.updated_at = datetime.utcnow()
                     price_changes.append({
                         'product_id': product.id,
                         'product_name': product.name,

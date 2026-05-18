@@ -102,7 +102,6 @@ class Product(db.Model):
     external_id = db.Column(db.String(255))
     url = db.Column(db.String(1000))  # Product URL for matching
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)  # Track price changes
 
     def to_dict(self):
         return {
@@ -111,8 +110,7 @@ class Product(db.Model):
             'price': self.price,
             'currency': self.currency,
             'external_id': self.external_id,
-            'url': self.url,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+            'url': self.url
         }
 
 
@@ -162,27 +160,3 @@ class ProductLink(db.Model):
             )
         }
 
-
-class SearchResult(db.Model):
-    __tablename__ = 'search_results'
-
-    id = db.Column(db.Integer, primary_key=True)
-    analysis_id = db.Column(db.Integer, db.ForeignKey('analyses.id'), nullable=False)
-    query = db.Column(db.String(500), nullable=False)
-    result_type = db.Column(db.String(20))
-    position = db.Column(db.Integer)
-    domain = db.Column(db.String(255))
-    title = db.Column(db.String(500))
-    url = db.Column(db.String(1000))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'query': self.query,
-            'result_type': self.result_type,
-            'position': self.position,
-            'domain': self.domain,
-            'title': self.title,
-            'url': self.url
-        }

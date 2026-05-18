@@ -1,4 +1,4 @@
-from ..models import db, Analysis, Competitor, Product, ProductLink, SearchResult
+from ..models import db, Analysis, Competitor, Product, ProductLink
 from ..utils import SiteParser, is_excluded_domain
 
 
@@ -310,23 +310,6 @@ class SearchService:
         # 4. Remove excluded domains (aggregators, marketplaces, search engines)
         competitors = [c for c in competitors if not is_excluded_domain(c['domain'])]
 
-        # Save search results to database
-        for comp in competitors:
-            for query in comp.get('found_in_queries', []):
-                position = comp['positions'].get(query)
-                result_type = comp['types'][0] if comp['types'] else 'organic'
-
-                search_result = SearchResult(
-                    analysis_id=analysis_id,
-                    query=query,
-                    result_type=result_type,
-                    position=position,
-                    domain=comp['domain'],
-                    title='',
-                    url=''
-                )
-                db.session.add(search_result)
-         
         db.session.commit()
         return competitors
     
