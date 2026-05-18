@@ -234,7 +234,7 @@ export default function Dashboard() {
               <div className="relative w-96">
                   <input
                     type="text"
-                    placeholder="Название анализа"
+                    placeholder="     Мои анализы"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="input-field pl-10 pr-4 py-2 text-sm w-full"

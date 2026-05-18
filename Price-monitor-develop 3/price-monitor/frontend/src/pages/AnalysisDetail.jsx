@@ -787,37 +787,6 @@ export default function AnalysisDetail() {
                         placeholder="Ваш сайт (например: example.ru)"
                         className="input-field flex-1"
                       />
-                      <button
-                        onClick={async () => {
-                          const url = userSiteUrl.trim();
-                          if (url) {
-                            try {
-                              const res = await api.post('/analysis/check-site', { url });
-                              const data = res.data;
-                              // Если сайт исключен, показываем только тост, не обновляем статус под кнопкой
-                              if (data.is_excluded) {
-                                showError(data.message || 'Сайт относится к агрегаторам/маркетплейсам/мессенджерам/поисковикам');
-                              } else {
-                                setUserSiteStatus(data.available ? '✅ Сайт доступен' : '❌ Сайт недоступен');
-                              }
-                            } catch (err) {
-                              if (err.response?.data?.is_excluded) {
-                                showError(err.response.data.message || 'Сайт относится к агрегаторам/маркетплейсам/мессенджерам/поисковикам');
-                              } else {
-                                setUserSiteStatus('❌ Ошибка проверки');
-                              }
-                            }
-                          } else {
-                            setUserSiteStatus('❌ Введите URL сайта');
-                          }
-                        }}
-                        className="btn-secondary whitespace-nowrap"
-                      >
-                        Проверить
-                      </button>
-                      {userSiteStatus && (
-                        <span className="text-sm font-medium whitespace-nowrap">{userSiteStatus}</span>
-                      )}
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                       Укажите URL вашего сайта, затем настройте селекторы и соберите товары
