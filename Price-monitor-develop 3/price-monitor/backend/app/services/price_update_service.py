@@ -31,6 +31,7 @@ class PriceUpdateService:
         """
         competitor = Competitor.query.get(competitor_id)
         if not competitor:
+            print(f"[DEBUG] Competitor {competitor_id} not found in database")
             return {
                 'success': False,
                 'error': 'Конкурент не найден',
@@ -40,6 +41,7 @@ class PriceUpdateService:
         # Check rate limit
         can_update, error_msg = PriceUpdateService.can_update_competitor(competitor)
         if not can_update:
+            print(f"[DEBUG] Competitor {competitor_id} is rate limited: {error_msg}")
             return {
                 'success': False,
                 'error': error_msg,
@@ -48,6 +50,7 @@ class PriceUpdateService:
         
         # Check if selectors are configured
         if not competitor.title_selector or not competitor.price_selector:
+            print(f"[DEBUG] Competitor {competitor_id} has no selectors configured")
             return {
                 'success': False,
                 'error': 'Селекторы не настроены',
