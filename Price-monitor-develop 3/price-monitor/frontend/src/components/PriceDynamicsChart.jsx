@@ -92,17 +92,22 @@ export function PriceDynamicsChart({ data }) {
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
+      // Filter to show only the hovered point's data
+      const hoveredData = payload.filter(entry => entry.value !== null && entry.value !== undefined)
+      
+      if (hoveredData.length === 0) return null
+      
       return (
         <div className="bg-white dark:bg-gray-800 p-3 border border-gray-200 dark:border-gray-700 rounded shadow-lg">
           <p className="font-medium mb-2 text-gray-900 dark:text-gray-100">{formatDate(label)}</p>
-          {payload.map((entry, idx) => {
+          {hoveredData.map((entry, idx) => {
             const legend = productLegends.find(l => l.name === entry.name)
             return (
               <div key={idx} className="flex items-center gap-2 text-sm">
                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }}></div>
                 <span className="text-gray-600 dark:text-gray-400">{entry.name}:</span>
                 <span className="font-semibold text-gray-900 dark:text-gray-100">
-                  {entry.value ? `${entry.value.toFixed(0)} ₽` : '-'}
+                  {entry.value ? `${Math.round(entry.value)} ₽` : '-'}
                 </span>
               </div>
             )
@@ -175,7 +180,7 @@ export function PriceDynamicsChart({ data }) {
 
   return (
     <div className="space-y-4">
-      <div className="h-80 pt-4">
+      <div className="h-[500px] pt-8">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
@@ -183,11 +188,16 @@ export function PriceDynamicsChart({ data }) {
               dataKey="date" 
               tickFormatter={formatDate}
               className="text-xs text-gray-500 dark:text-gray-400"
+              interval={0}
+              angle={-45}
+              textAnchor="end"
+              height={60}
             />
             <YAxis 
               className="text-xs text-gray-500 dark:text-gray-400"
-              tickFormatter={(value) => `${value} ₽`}
+              tickFormatter={(value) => `${Math.round(value)} ₽`}
               domain={yAxisDomain}
+              width={60}
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend content={<CustomLegend />} />
