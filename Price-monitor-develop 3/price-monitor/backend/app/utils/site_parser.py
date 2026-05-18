@@ -48,13 +48,17 @@ class SiteParser:
         return []
 
     def get_page(self, url):
+        # Сначала пробуем обычные HTTP-запросы (быстрее и надежнее)
+        html = self._get_page_requests(url)
+        if html and len(html) > 1000:
+            return html
+        
+        # Если не получилось и Selenium доступен - пробуем его
         if SELENIUM_AVAILABLE:
             html = self._get_page_selenium(url)
             if html and len(html) > 1000:
                 return html
-        html = self._get_page_requests(url)
-        if html:
-            return html
+        
         return None
 
     def _get_page_requests(self, url):
