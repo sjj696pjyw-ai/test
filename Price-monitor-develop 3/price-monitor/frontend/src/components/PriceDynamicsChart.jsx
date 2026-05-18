@@ -1,5 +1,5 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 
 export function PriceDynamicsChart({ data, dateRange }) {
   const [activeDot, setActiveDot] = useState(null)
@@ -13,7 +13,6 @@ export function PriceDynamicsChart({ data, dateRange }) {
   }
   
   // Transform data for Recharts format
-  const chartData = []
   const productLegends = []
   const seenProducts = new Set()
   const allDates = new Set()
@@ -51,55 +50,58 @@ export function PriceDynamicsChart({ data, dateRange }) {
 
     series.data_points.forEach(point => {
       allDates.add(point.date)
-      let existingPoint = chartData.find(d => d.date === point.date)
-      if (!existingPoint) {
-        existingPoint = { date: point.date }
-        chartData.push(existingPoint)
-      }
-      
-      // Store price with the specific index to keep series separate
-      if (point.user_price !== null && point.user_price !== undefined) {
-        existingPoint[`user_${index}`] = point.user_price
-      }
-      if (point.competitor_price !== null && point.competitor_price !== undefined) {
-        existingPoint[`competitor_${index}`] = point.competitor_price
-      }
     })
   })
 
-  // If dateRange is provided, add all dates from the range
-  if (dateRange && dateRange.start && dateRange.end) {
-    const startDate = new Date(dateRange.start)
-    const endDate = new Date(dateRange.end)
+  // Generate complete date range: 4 days before today, today in center, 2 days after
+  const chartData = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const todayStr = today.toISOString().split('T')[0]
+    
+    // Create 7-day range: 4 days before, today, 2 days after
+    const startDate = new Date(today)
+    startDate.setDate(startDate.getDate() - 4)
+    
+    const endDate = new Date(today)
+    endDate.setDate(endDate.getDate() + 2)
+    
+    const dateRangeArray = []
     const currentDate = new Date(startDate)
     
     while (currentDate <= endDate) {
       const dateStr = currentDate.toISOString().split('T')[0]
-      allDates.add(dateStr)
+      dateRangeArray.push(dateStr)
       currentDate.setDate(currentDate.getDate() + 1)
     }
-  }
-
-  // Create complete date range with all dates (even those without data)
-  const sortedDates = Array.from(allDates).sort((a, b) => new Date(a) - new Date(b))
-  const completeChartData = sortedDates.map(date => {
-    const existingPoint = chartData.find(d => d.date === date)
-    if (existingPoint) {
-      return existingPoint
-    }
-    return { date }
-  })
-
-  // Sort by date
-  completeChartData.sort((a, b) => new Date(a.date) - new Date(b.date))
-  
-  // Use completeChartData as display data (keep chronological order)
-  const displayChartData = completeChartData
+    
+    // Build chart data points
+    const result = []
+    dateRangeArray.forEach(date => {
+      const point = { date }
+      
+      data.forEach((series, index) => {
+        const seriesPoint = series.data_points.find(p => p.date === date)
+        if (seriesPoint) {
+          if (seriesPoint.user_price !== null && seriesPoint.user_price !== undefined) {
+            point[`user_${index}`] = seriesPoint.user_price
+          }
+          if (seriesPoint.competitor_price !== null && seriesPoint.competitor_price !== undefined) {
+            point[`competitor_${index}`] = seriesPoint.competitor_price
+          }
+        }
+      })
+      
+      result.push(point)
+    })
+    
+    return result
+  }, [data])
 
   // Calculate min and max prices for dynamic Y-axis domain
   let minPrice = Infinity
   let maxPrice = -Infinity
-  displayChartData.forEach(point => {
+  chartData.forEach(point => {
     Object.keys(point).forEach(key => {
       if (key !== 'date' && point[key] !== null && point[key] !== undefined) {
         minPrice = Math.min(minPrice, point[key])
@@ -124,18 +126,23 @@ export function PriceDynamicsChart({ data, dateRange }) {
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length && activeDot) {
-      return (
-        <div className="bg-white dark:bg-gray-800 p-3 border border-gray-200 dark:border-gray-700 rounded shadow-lg">
-          <p className="font-medium mb-2 text-gray-900 dark:text-gray-100">{formatDate(label)}</p>
-          <div className="flex items-center gap-2 text-sm">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: activeDot.color }}></div>
-            <span className="text-gray-600 dark:text-gray-400">{activeDot.name}:</span>
-            <span className="font-semibold text-gray-900 dark:text-gray-100">
-              {`${Math.round(activeDot.value)} ₽`}
-            </span>
+      // Filter payload to show only the hovered item
+      const hoveredPayload = payload.find(p => p.dataKey === activeDot.dataKey && p.value === activeDot.value)
+      
+      if (hoveredPayload) {
+        return (
+          <div className="bg-white dark:bg-gray-800 p-3 border border-gray-200 dark:border-gray-700 rounded shadow-lg">
+            <p className="font-medium mb-2 text-gray-900 dark:text-gray-100">{formatDate(label)}</p>
+            <div className="flex items-center gap-2 text-sm">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: activeDot.color }}></div>
+              <span className="text-gray-600 dark:text-gray-400">{activeDot.name}:</span>
+              <span className="font-semibold text-gray-900 dark:text-gray-100">
+                {`${Math.round(activeDot.value)} ₽`}
+              </span>
+            </div>
           </div>
-        </div>
-      )
+        )
+      }
     }
     return null
   }
@@ -148,7 +155,8 @@ export function PriceDynamicsChart({ data, dateRange }) {
             key={idx} 
             className={`flex items-center gap-2 transition-opacity ${legend.url ? 'cursor-pointer hover:opacity-75' : ''}`}
             title={legend.url ? 'Перейти к товару' : ''}
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation()
               if (legend.url) {
                 window.open(legend.url, '_blank')
               }
@@ -201,7 +209,7 @@ export function PriceDynamicsChart({ data, dateRange }) {
         fill={fill}
         stroke={stroke}
         strokeWidth={2}
-        style={{ cursor: 'pointer', transition: 'r 0.2s' }}
+        style={{ cursor: 'pointer' }}
         onMouseEnter={() => {
           setActiveDot({
             dataKey,
@@ -215,7 +223,8 @@ export function PriceDynamicsChart({ data, dateRange }) {
         onMouseLeave={() => {
           setActiveDot(null)
         }}
-        onClick={() => {
+        onClick={(e) => {
+          e.stopPropagation()
           if (productUrl) {
             window.open(productUrl, '_blank')
           }
@@ -263,7 +272,7 @@ export function PriceDynamicsChart({ data, dateRange }) {
     <div className="space-y-4">
       <div className="h-[500px] pt-8 overflow-visible">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={displayChartData} margin={{ top: 20, right: 30, left: 80, bottom: 40 }}>
+          <LineChart data={chartData} margin={{ top: 20, right: 30, left: 100, bottom: 40 }}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
             <XAxis 
               dataKey="date" 
@@ -276,13 +285,14 @@ export function PriceDynamicsChart({ data, dateRange }) {
               tick={{ fill: 'currentColor' }}
               type="category"
               scale="point"
-              padding={{ left: 50, right: 50 }}
+              padding={{ left: 0, right: 0 }}
+              allowDataOverflow={false}
             />
             <YAxis 
               className="text-xs text-gray-500 dark:text-gray-400"
               tickFormatter={(value) => `${Math.round(value)} ₽`}
               domain={yAxisDomain}
-              width={80}
+              width={100}
               tick={{ fill: 'currentColor' }}
             />
             <Tooltip content={<CustomTooltip />} cursor={false} />
