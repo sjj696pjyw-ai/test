@@ -53,18 +53,18 @@ export function PriceDynamicsChart({ data, dateRange }) {
     })
   })
 
-  // Generate complete date range: 4 days before today, today in center, 2 days after
+  // Generate complete date range: 3 days before today, today in center, 3 days after
   const chartData = useMemo(() => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const todayStr = today.toISOString().split('T')[0]
     
-    // Create 7-day range: 4 days before, today, 2 days after
+    // Create 7-day range: 3 days before, today, 3 days after
     const startDate = new Date(today)
-    startDate.setDate(startDate.getDate() - 4)
+    startDate.setDate(startDate.getDate() - 3)
     
     const endDate = new Date(today)
-    endDate.setDate(endDate.getDate() + 2)
+    endDate.setDate(endDate.getDate() + 3)
     
     const dateRangeArray = []
     const currentDate = new Date(startDate)
@@ -155,20 +155,26 @@ export function PriceDynamicsChart({ data, dateRange }) {
             key={idx} 
             className={`flex items-center gap-2 transition-opacity ${legend.url ? 'cursor-pointer hover:opacity-75' : ''}`}
             title={legend.url ? 'Перейти к товару' : ''}
-            onClick={(e) => {
-              e.stopPropagation()
-              if (legend.url) {
-                window.open(legend.url, '_blank')
-              }
-            }}
           >
             <div 
               className="w-3 h-3 rounded-full" 
               style={{ backgroundColor: legend.color }}
             ></div>
-            <span className="text-sm text-gray-700 dark:text-gray-300 max-w-xs truncate">
-              {legend.name}
-            </span>
+            {legend.url ? (
+              <a 
+                href={legend.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-gray-700 dark:text-gray-300 max-w-xs truncate hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {legend.name}
+              </a>
+            ) : (
+              <span className="text-sm text-gray-700 dark:text-gray-300 max-w-xs truncate">
+                {legend.name}
+              </span>
+            )}
           </div>
         ))}
       </div>
