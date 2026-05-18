@@ -75,9 +75,9 @@ class CompetitorService:
             competitor.title_selector = title_selector
             competitor.price_selector = price_selector
             competitor.sku_selector = sku_selector
-            # Update catalog URL if provided
+            # Update domain (catalog URL) if provided
             if url:
-                competitor.catalog_url = url
+                competitor.domain = url
             db.session.commit()
             return competitor
         return None

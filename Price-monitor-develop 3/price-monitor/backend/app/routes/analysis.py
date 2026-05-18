@@ -280,7 +280,7 @@ def reparse_competitor(competitor_id):
     competitor.price_selector = price_selector
     competitor.sku_selector = sku_selector
     if url:
-        competitor.catalog_url = url
+        competitor.domain = url
     
     db.session.commit()
     
