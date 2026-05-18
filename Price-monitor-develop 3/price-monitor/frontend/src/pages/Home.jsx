@@ -310,7 +310,7 @@ export default function Home() {
               Готовы попробовать?
             </h2>
             <p className="text-white/80 dark:text-primary-100 mb-10 text-lg max-w-2xl mx-auto">
-              Создайте первый анализ бесплатно. Никакой привязки карты — просто начните мониторинг цен конкурентов.
+              Начните уже сейчас, чтобы сравнить и анализировать товары конкурентов с вашими.
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-4">
               <button
@@ -324,13 +324,8 @@ export default function Home() {
                 to="/register"
                 className="inline-flex items-center justify-center border-2 border-white/40 text-white px-8 py-3.5 rounded-xl font-semibold hover:bg-white/10 transition-colors"
               >
-                Создать аккаунт
+                Зарегистрироваться
               </Link>
-            </div>
-            <div className="mt-8 flex items-center justify-center gap-6 text-sm text-white/70 dark:text-primary-200">
-              <span className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> Без карты</span>
-              <span className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> Без ограничений</span>
-              <span className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> 1 клик</span>
             </div>
           </div>
         </section>

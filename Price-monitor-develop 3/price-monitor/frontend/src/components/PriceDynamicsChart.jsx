@@ -8,29 +8,42 @@ export function PriceDynamicsChart({ data }) {
       </div>
     )
   }
-
+  
   // Transform data for Recharts format
   const chartData = []
   const productLegends = []
+  const seenProducts = new Set()
 
   // Collect all unique dates and build series
   data.forEach((series, index) => {
     const userColor = '#22c55e' // green-500
     const competitorColor = '#3b82f6' // blue-500
     
-    productLegends.push({
-      name: `Мой: ${series.product_name}`,
-      type: 'user',
-      color: userColor,
-      url: series.product_url
-    })
+    // Add user product only once (avoid duplicates)
+    const userKey = `user_${series.product_name}`
+    if (!seenProducts.has(userKey)) {
+      seenProducts.add(userKey)
+      productLegends.push({
+        name: `Мой: ${series.product_name}`,
+        type: 'user',
+        color: userColor,
+        url: series.product_url,
+        dataKey: `user_${index}`
+      })
+    }
     
-    productLegends.push({
-      name: `${series.competitor_name} (${series.competitor_domain})`,
-      type: 'competitor',
-      color: competitorColor,
-      url: series.product_url
-    })
+    // Add competitor product
+    const competitorKey = `competitor_${series.competitor_name}_${series.competitor_domain}`
+    if (!seenProducts.has(competitorKey)) {
+      seenProducts.add(competitorKey)
+      productLegends.push({
+        name: `${series.competitor_name} (${series.competitor_domain})`,
+        type: 'competitor',
+        color: competitorColor,
+        url: series.product_url,
+        dataKey: `competitor_${index}`
+      })
+    }
 
     series.data_points.forEach(point => {
       let existingPoint = chartData.find(d => d.date === point.date)
@@ -50,6 +63,26 @@ export function PriceDynamicsChart({ data }) {
 
   // Sort by date
   chartData.sort((a, b) => new Date(a.date) - new Date(b.date))
+
+  // Calculate min and max prices for dynamic Y-axis domain
+  let minPrice = Infinity
+  let maxPrice = -Infinity
+  chartData.forEach(point => {
+    Object.keys(point).forEach(key => {
+      if (key !== 'date' && point[key] !== null && point[key] !== undefined) {
+        minPrice = Math.min(minPrice, point[key])
+        maxPrice = Math.max(maxPrice, point[key])
+      }
+    })
+  })
+  
+  // Add padding to the domain (10% of range)
+  const priceRange = maxPrice - minPrice
+  const padding = priceRange * 0.1 || 1000 // fallback if all prices are the same
+  const yAxisDomain = [
+    Math.floor(minPrice - padding),
+    Math.ceil(maxPrice + padding)
+  ]
 
   // Format date for display
   const formatDate = (dateStr) => {
@@ -86,7 +119,7 @@ export function PriceDynamicsChart({ data }) {
         {productLegends.map((legend, idx) => (
           <div 
             key={idx} 
-            className="flex items-center gap-2 cursor-pointer hover:opacity-75 transition-opacity"
+            className={`flex items-center gap-2 transition-opacity ${legend.url ? 'cursor-pointer hover:opacity-75' : ''}`}
             title={legend.url ? 'Перейти к товару' : ''}
             onClick={() => {
               if (legend.url) {
@@ -142,7 +175,7 @@ export function PriceDynamicsChart({ data }) {
 
   return (
     <div className="space-y-4">
-      <div className="h-80">
+      <div className="h-80 pt-4">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
@@ -154,6 +187,7 @@ export function PriceDynamicsChart({ data }) {
             <YAxis 
               className="text-xs text-gray-500 dark:text-gray-400"
               tickFormatter={(value) => `${value} ₽`}
+              domain={yAxisDomain}
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend content={<CustomLegend />} />
