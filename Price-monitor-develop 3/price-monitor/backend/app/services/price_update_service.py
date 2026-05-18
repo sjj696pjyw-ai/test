@@ -61,11 +61,15 @@ class PriceUpdateService:
         else:
             url = domain
         
+        print(f"[DEBUG] Updating prices for competitor {competitor_id}, domain: {domain}, url: {url}")
+        print(f"[DEBUG] Selectors - title: {competitor.title_selector}, price: {competitor.price_selector}")
+        
         # Parse the site
         parser = SiteParser()
         html = parser.get_page(url)
         
         if not html:
+            print(f"[DEBUG] Failed to get HTML from {url}")
             competitor.update_status = 'error'
             competitor.update_error_message = 'Сайт не отвечает или недоступен'
             db.session.commit()
@@ -78,6 +82,8 @@ class PriceUpdateService:
                 'competitor_domain': competitor.domain
             }
         
+        print(f"[DEBUG] Got HTML, length: {len(html)}")
+        
         # Parse products
         products_data = parser.parse_products(
             html, 
@@ -85,6 +91,8 @@ class PriceUpdateService:
             competitor.price_selector, 
             competitor.sku_selector
         )
+        
+        print(f"[DEBUG] Parsed {len(products_data)} products")
         
         if not products_data:
             competitor.update_status = 'partial'
