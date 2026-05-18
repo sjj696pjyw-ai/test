@@ -147,6 +147,10 @@ export default function AnalysisDetail() {
   const [editingName, setEditingName] = useState('')
   const [isUpdatingPrices, setIsUpdatingPrices] = useState(false)
   const [priceDynamicsData, setPriceDynamicsData] = useState(null)
+  const [showEditDomainModal, setShowEditDomainModal] = useState(false)
+  const [editingDomain, setEditingDomain] = useState('')
+  const [editingTitleSelector, setEditingTitleSelector] = useState('')
+  const [editingPriceSelector, setEditingPriceSelector] = useState('')
   const { error: showError, success } = useToast()
   const isDemo = location.state?.demo === true
 
@@ -269,6 +273,35 @@ export default function AnalysisDetail() {
   const cancelEditingName = () => {
     setIsEditingName(false)
     setEditingName('')
+  }
+
+  const handleEditDomainClick = () => {
+    if (userCompetitor) {
+      setEditingDomain(userCompetitor.domain || '')
+      setEditingTitleSelector(userCompetitor.title_selector || '')
+      setEditingPriceSelector(userCompetitor.price_selector || '')
+      setShowEditDomainModal(true)
+    }
+  }
+
+  const handleSaveDomainAndSelectors = async () => {
+    if (!editingDomain.trim() || !editingTitleSelector.trim() || !editingPriceSelector.trim()) {
+      showError('Домен и селекторы не могут быть пустыми')
+      return
+    }
+    try {
+      await api.put(`/analysis/competitor/${userCompetitor.id}`, {
+        url: editingDomain.trim(),
+        title_selector: editingTitleSelector.trim(),
+        price_selector: editingPriceSelector.trim()
+      })
+      await fetchAnalysis()
+      setShowEditDomainModal(false)
+      success('Домен и селекторы обновлены')
+    } catch (error) {
+      console.error('Error updating domain and selectors:', error)
+      showError('Ошибка при обновлении домена и селекторов')
+    }
   }
 
   const handleExportExcel = () => {
@@ -682,17 +715,34 @@ export default function AnalysisDetail() {
                     </a>
                   )}
                 </h3>
-                {!isDemo && userCompetitor.products?.length > 0 && (
-                  <button
-                    onClick={() => handleUpdatePrices(userCompetitor.id)}
-                    disabled={isUpdatingPrices}
-                    className="btn-secondary text-sm flex items-center space-x-2"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${isUpdatingPrices ? 'animate-spin' : ''}`} />
-                    <span>Обновить</span>
-                  </button>
-                )}
+                <div className="flex items-center space-x-2">
+                  {!isDemo && userCompetitor.products?.length > 0 && (
+                    <Link
+                      to={`/analysis/${id}/competitor/${userCompetitor.id}/selectors`}
+                      className="btn-secondary text-sm flex items-center space-x-2"
+                    >
+                      <Settings className="h-4 w-4" />
+                      <span>Настроить</span>
+                    </Link>
+                  )}
+                  {!isDemo && userCompetitor.products?.length > 0 && (
+                    <button
+                      onClick={() => handleUpdatePrices(userCompetitor.id)}
+                      disabled={isUpdatingPrices}
+                      className="btn-secondary text-sm flex items-center space-x-2"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isUpdatingPrices ? 'animate-spin' : ''}`} />
+                      <span>Обновить</span>
+                    </button>
+                  )}
+                </div>
               </div>
+              {/* Display domain above price actuality */}
+              {userCompetitor.domain && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                  Домен: <span className="font-medium">{userCompetitor.domain}</span>
+                </p>
+              )}
               {userCompetitor.last_price_update && (
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
                   Цены актуальны на {new Date(userCompetitor.last_price_update).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })} (UTC)
@@ -1021,6 +1071,73 @@ export default function AnalysisDetail() {
               <p className="text-gray-500 dark:text-gray-400">Конкуренты не найдены</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Edit Domain and Selectors Modal */}
+      {showEditDomainModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              Редактирование домена и селекторов
+            </h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Домен (URL каталога)
+                </label>
+                <input
+                  type="text"
+                  value={editingDomain}
+                  onChange={(e) => setEditingDomain(e.target.value)}
+                  className="input-field w-full"
+                  placeholder="example.ru/catalog"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Селектор названия товара
+                </label>
+                <input
+                  type="text"
+                  value={editingTitleSelector}
+                  onChange={(e) => setEditingTitleSelector(e.target.value)}
+                  className="input-field w-full font-mono text-sm"
+                  placeholder=".product-title"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Селектор цены
+                </label>
+                <input
+                  type="text"
+                  value={editingPriceSelector}
+                  onChange={(e) => setEditingPriceSelector(e.target.value)}
+                  className="input-field w-full font-mono text-sm"
+                  placeholder=".product-price"
+                />
+              </div>
+            </div>
+            
+            <div className="flex justify-end space-x-2 mt-6">
+              <button
+                onClick={() => setShowEditDomainModal(false)}
+                className="btn-secondary text-sm"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleSaveDomainAndSelectors}
+                className="btn-primary text-sm"
+              >
+                Сохранить
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
