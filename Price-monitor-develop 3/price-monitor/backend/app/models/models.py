@@ -12,7 +12,6 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(256), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     analyses = db.relationship('Analysis', backref='user', lazy='dynamic', cascade='all, delete-orphan')
 
@@ -41,7 +40,6 @@ class Analysis(db.Model):
     queries = db.Column(db.Text)
     user_site = db.Column(db.String(255))  # URL of the user's site for comparison
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     competitors = db.relationship('Competitor', backref='analysis', lazy='dynamic', cascade='all, delete-orphan')
     product_links = db.relationship('ProductLink', backref='analysis', lazy='dynamic', cascade='all, delete-orphan')

@@ -29,7 +29,7 @@ target/
 *.swo
 *.tmp
 
-# System files
+# System/Environment files
 .DS_Store
 Thumbs.db
 .env
