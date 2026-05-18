@@ -57,14 +57,12 @@ class PriceUpdateService:
                 'status': 'no_selectors'
             }
         
-        # Build URL from domain
-        domain = competitor.domain
-        if not domain.startswith(('http://', 'https://')):
-            url = f'https://{domain}'
-        else:
-            url = domain
+        # Build URL from catalog_url if available, otherwise from domain
+        url = competitor.catalog_url if competitor.catalog_url else competitor.domain
+        if not url.startswith(('http://', 'https://')):
+            url = f'https://{url}'
         
-        print(f"[DEBUG] Updating prices for competitor {competitor_id}, domain: {domain}, url: {url}")
+        print(f"[DEBUG] Updating prices for competitor {competitor_id}, domain: {competitor.domain}, url: {url}")
         print(f"[DEBUG] Selectors - title: {competitor.title_selector}, price: {competitor.price_selector}")
         
         # Parse the site

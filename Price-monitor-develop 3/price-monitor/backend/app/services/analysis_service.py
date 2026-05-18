@@ -69,12 +69,15 @@ class CompetitorService:
         return Competitor.query.filter_by(analysis_id=analysis_id).all()
 
     @staticmethod
-    def update_selectors(competitor_id, title_selector, price_selector, sku_selector=None):
+    def update_selectors(competitor_id, title_selector, price_selector, sku_selector=None, url=None):
         competitor = Competitor.query.get(competitor_id)
         if competitor:
             competitor.title_selector = title_selector
             competitor.price_selector = price_selector
             competitor.sku_selector = sku_selector
+            # Update catalog URL if provided
+            if url:
+                competitor.catalog_url = url
             db.session.commit()
             return competitor
         return None

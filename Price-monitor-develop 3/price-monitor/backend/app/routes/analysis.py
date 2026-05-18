@@ -238,8 +238,9 @@ def update_competitor(competitor_id):
     title_selector = data.get('title_selector')
     price_selector = data.get('price_selector')
     sku_selector = data.get('sku_selector')
+    url = data.get('url')  # Optional: update catalog URL
     
-    competitor = CompetitorService.update_selectors(competitor_id, title_selector, price_selector, sku_selector)
+    competitor = CompetitorService.update_selectors(competitor_id, title_selector, price_selector, sku_selector, url)
     
     if not competitor:
         return jsonify({'error': 'Competitor not found'}), 404
@@ -247,6 +248,55 @@ def update_competitor(competitor_id):
     return jsonify({
         'message': 'Competitor updated successfully',
         'competitor': competitor.to_dict()
+    }), 200
+
+
+@analysis_bp.route('/competitor/<int:competitor_id>/reparse', methods=['POST'])
+@jwt_required()
+def reparse_competitor(competitor_id):
+    """Update selectors and re-parse products for a competitor"""
+    current_user_id = get_jwt_identity()
+    competitor = Competitor.query.get(competitor_id)
+    
+    if not competitor:
+        return jsonify({'error': 'Конкурент не найден'}), 404
+    
+    # Verify user has access to this competitor's analysis
+    analysis = AnalysisService.get_analysis_by_id(competitor.analysis_id, current_user_id)
+    if not analysis:
+        return jsonify({'error': 'Доступ запрещен'}), 403
+    
+    data = request.get_json()
+    url = data.get('url')
+    title_selector = data.get('title_selector')
+    price_selector = data.get('price_selector')
+    sku_selector = data.get('sku_selector')
+    
+    if not all([url, title_selector, price_selector]):
+        return jsonify({'error': 'URL и селекторы обязательны'}), 400
+    
+    # Update competitor settings
+    competitor.title_selector = title_selector
+    competitor.price_selector = price_selector
+    competitor.sku_selector = sku_selector
+    if url:
+        competitor.catalog_url = url
+    
+    db.session.commit()
+    
+    # Parse products with new settings
+    products = SiteParsingService.parse_competitor_site(
+        competitor_id=competitor_id,
+        url=url,
+        title_selector=title_selector,
+        price_selector=price_selector,
+        sku_selector=sku_selector
+    )
+    
+    return jsonify({
+        'message': 'Селекторы обновлены и товары собраны',
+        'competitor': competitor.to_dict(),
+        'products': [p.to_dict() for p in products]
     }), 200
 
 

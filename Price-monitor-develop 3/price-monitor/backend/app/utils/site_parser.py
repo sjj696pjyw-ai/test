@@ -123,7 +123,7 @@ class SiteParser:
                     'external_id': sku
                 })
             elif name and price is None:
-                print(f"[DEBUG] Product '{name}' has invalid price: '{price_text}'\")
+                print(f"[DEBUG] Product '{name}' has invalid price: '{price_text}'")
 
         print(f"[DEBUG] Successfully parsed {len(products)} valid products")
         return products
