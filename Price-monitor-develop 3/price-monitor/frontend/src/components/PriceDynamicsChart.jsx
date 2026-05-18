@@ -1,6 +1,9 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { useState } from 'react'
 
 export function PriceDynamicsChart({ data, dateRange }) {
+  const [activeDot, setActiveDot] = useState(null)
+  
   if (!data || data.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500 dark:text-gray-400">
@@ -120,36 +123,17 @@ export function PriceDynamicsChart({ data, dateRange }) {
   }
 
   const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      // Filter to show only entries that have a value at this specific point
-      // and deduplicate by product name + site domain
-      const seenProducts = new Set()
-      const validEntries = payload
-        .filter(entry => entry.value !== null && entry.value !== undefined)
-        .filter(entry => {
-          // Create unique key from product name and color (to distinguish same products on different sites)
-          const productKey = `${entry.name}-${entry.color}`
-          if (seenProducts.has(productKey)) {
-            return false
-          }
-          seenProducts.add(productKey)
-          return true
-        })
-      
-      if (validEntries.length === 0) return null
-      
+    if (active && payload && payload.length && activeDot) {
       return (
         <div className="bg-white dark:bg-gray-800 p-3 border border-gray-200 dark:border-gray-700 rounded shadow-lg">
           <p className="font-medium mb-2 text-gray-900 dark:text-gray-100">{formatDate(label)}</p>
-          {validEntries.map((entry, idx) => (
-            <div key={idx} className="flex items-center gap-2 text-sm">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }}></div>
-              <span className="text-gray-600 dark:text-gray-400">{entry.name}:</span>
-              <span className="font-semibold text-gray-900 dark:text-gray-100">
-                {`${Math.round(entry.value)} ₽`}
-              </span>
-            </div>
-          ))}
+          <div className="flex items-center gap-2 text-sm">
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: activeDot.color }}></div>
+            <span className="text-gray-600 dark:text-gray-400">{activeDot.name}:</span>
+            <span className="font-semibold text-gray-900 dark:text-gray-100">
+              {`${Math.round(activeDot.value)} ₽`}
+            </span>
+          </div>
         </div>
       )
     }
@@ -183,6 +167,63 @@ export function PriceDynamicsChart({ data, dateRange }) {
     )
   }
 
+  // Custom dot component
+  const CustomDot = (props) => {
+    const { cx, cy, fill, stroke, value, dataKey, index, payload } = props
+    
+    if (value === null || value === undefined || !cx || !cy) {
+      return null
+    }
+
+    // Find the product name for this dot
+    let productName = ''
+    let productUrl = ''
+    const seriesIndex = parseInt(dataKey.split('_')[1])
+    if (data && data[seriesIndex]) {
+      if (dataKey.startsWith('user_')) {
+        productName = `Мой: ${data[seriesIndex].product_name}`
+        productUrl = data[seriesIndex].product_url || ''
+      } else {
+        productName = `${data[seriesIndex].competitor_name} (${data[seriesIndex].competitor_domain})`
+        productUrl = data[seriesIndex].product_url || ''
+      }
+    }
+
+    const isHovered = activeDot && 
+                      activeDot.dataKey === dataKey && 
+                      activeDot.index === index
+
+    return (
+      <circle
+        cx={cx}
+        cy={cy}
+        r={isHovered ? 6 : 4}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={2}
+        style={{ cursor: 'pointer', transition: 'r 0.2s' }}
+        onMouseEnter={() => {
+          setActiveDot({
+            dataKey,
+            index,
+            name: productName,
+            value,
+            color: fill,
+            url: productUrl
+          })
+        }}
+        onMouseLeave={() => {
+          setActiveDot(null)
+        }}
+        onClick={() => {
+          if (productUrl) {
+            window.open(productUrl, '_blank')
+          }
+        }}
+      />
+    )
+  }
+
   // Build line elements dynamically
   const lines = []
   data.forEach((series, index) => {
@@ -196,7 +237,8 @@ export function PriceDynamicsChart({ data, dateRange }) {
         dataKey={`user_${index}`}
         stroke={userColor}
         strokeWidth={2}
-        dot={{ r: 4 }}
+        dot={(props) => <CustomDot {...props} />}
+        activeDot={false}
         name={`Мой: ${series.product_name}`}
         connectNulls={false}
       />
@@ -209,7 +251,8 @@ export function PriceDynamicsChart({ data, dateRange }) {
         dataKey={`competitor_${index}`}
         stroke={competitorColor}
         strokeWidth={2}
-        dot={{ r: 4 }}
+        dot={(props) => <CustomDot {...props} />}
+        activeDot={false}
         name={`${series.competitor_name} (${series.competitor_domain})`}
         connectNulls={false}
       />
@@ -220,19 +263,20 @@ export function PriceDynamicsChart({ data, dateRange }) {
     <div className="space-y-4">
       <div className="h-[500px] pt-8 overflow-visible">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={displayChartData} margin={{ top: 20, right: 30, left: 60, bottom: 20 }}>
+          <LineChart data={displayChartData} margin={{ top: 20, right: 30, left: 80, bottom: 40 }}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
             <XAxis 
               dataKey="date" 
               tickFormatter={formatDate}
               className="text-xs text-gray-500 dark:text-gray-400"
               interval={0}
-              angle={-45}
-              textAnchor="end"
-              height={60}
+              angle={0}
+              textAnchor="middle"
+              height={50}
               tick={{ fill: 'currentColor' }}
               type="category"
               scale="point"
+              padding={{ left: 50, right: 50 }}
             />
             <YAxis 
               className="text-xs text-gray-500 dark:text-gray-400"
@@ -248,7 +292,7 @@ export function PriceDynamicsChart({ data, dateRange }) {
         </ResponsiveContainer>
       </div>
       <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-        Нажмите на название товара в легенде для перехода на сайт
+        Нажмите на название товара в легенде или точку на графике для перехода на сайт
       </p>
     </div>
   )
