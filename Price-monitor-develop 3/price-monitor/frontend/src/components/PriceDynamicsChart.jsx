@@ -1,6 +1,6 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
-export function PriceDynamicsChart({ data }) {
+export function PriceDynamicsChart({ data, dateRange }) {
   if (!data || data.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500 dark:text-gray-400">
@@ -13,6 +13,7 @@ export function PriceDynamicsChart({ data }) {
   const chartData = []
   const productLegends = []
   const seenProducts = new Set()
+  const allDates = new Set()
 
   // Collect all unique dates and build series
   data.forEach((series, index) => {
@@ -46,6 +47,7 @@ export function PriceDynamicsChart({ data }) {
     }
 
     series.data_points.forEach(point => {
+      allDates.add(point.date)
       let existingPoint = chartData.find(d => d.date === point.date)
       if (!existingPoint) {
         existingPoint = { date: point.date }
@@ -61,13 +63,36 @@ export function PriceDynamicsChart({ data }) {
     })
   })
 
+  // If dateRange is provided, add all dates from the range
+  if (dateRange && dateRange.start && dateRange.end) {
+    const startDate = new Date(dateRange.start)
+    const endDate = new Date(dateRange.end)
+    const currentDate = new Date(startDate)
+    
+    while (currentDate <= endDate) {
+      const dateStr = currentDate.toISOString().split('T')[0]
+      allDates.add(dateStr)
+      currentDate.setDate(currentDate.getDate() + 1)
+    }
+  }
+
+  // Create complete date range with all dates (even those without data)
+  const sortedDates = Array.from(allDates).sort((a, b) => new Date(a) - new Date(b))
+  const completeChartData = sortedDates.map(date => {
+    const existingPoint = chartData.find(d => d.date === date)
+    if (existingPoint) {
+      return existingPoint
+    }
+    return { date }
+  })
+
   // Sort by date
-  chartData.sort((a, b) => new Date(a.date) - new Date(b.date))
+  completeChartData.sort((a, b) => new Date(a.date) - new Date(b.date))
 
   // Calculate min and max prices for dynamic Y-axis domain
   let minPrice = Infinity
   let maxPrice = -Infinity
-  chartData.forEach(point => {
+  completeChartData.forEach(point => {
     Object.keys(point).forEach(key => {
       if (key !== 'date' && point[key] !== null && point[key] !== undefined) {
         minPrice = Math.min(minPrice, point[key])
@@ -92,26 +117,23 @@ export function PriceDynamicsChart({ data }) {
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
-      // Filter to show only the hovered point's data
-      const hoveredData = payload.filter(entry => entry.value !== null && entry.value !== undefined)
+      // Filter to show only entries that have a value at this specific point
+      const validEntries = payload.filter(entry => entry.value !== null && entry.value !== undefined)
       
-      if (hoveredData.length === 0) return null
+      if (validEntries.length === 0) return null
       
       return (
         <div className="bg-white dark:bg-gray-800 p-3 border border-gray-200 dark:border-gray-700 rounded shadow-lg">
           <p className="font-medium mb-2 text-gray-900 dark:text-gray-100">{formatDate(label)}</p>
-          {hoveredData.map((entry, idx) => {
-            const legend = productLegends.find(l => l.name === entry.name)
-            return (
-              <div key={idx} className="flex items-center gap-2 text-sm">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }}></div>
-                <span className="text-gray-600 dark:text-gray-400">{entry.name}:</span>
-                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                  {entry.value ? `${Math.round(entry.value)} ₽` : '-'}
-                </span>
-              </div>
-            )
-          })}
+          {validEntries.map((entry, idx) => (
+            <div key={idx} className="flex items-center gap-2 text-sm">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }}></div>
+              <span className="text-gray-600 dark:text-gray-400">{entry.name}:</span>
+              <span className="font-semibold text-gray-900 dark:text-gray-100">
+                {`${Math.round(entry.value)} ₽`}
+              </span>
+            </div>
+          ))}
         </div>
       )
     }
@@ -180,9 +202,9 @@ export function PriceDynamicsChart({ data }) {
 
   return (
     <div className="space-y-4">
-      <div className="h-[500px] pt-8">
+      <div className="h-[500px] pt-8 overflow-visible">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData}>
+          <LineChart data={completeChartData} margin={{ top: 20, right: 30, left: 0, bottom: 20 }}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
             <XAxis 
               dataKey="date" 
@@ -192,12 +214,14 @@ export function PriceDynamicsChart({ data }) {
               angle={-45}
               textAnchor="end"
               height={60}
+              tick={{ fill: 'currentColor' }}
             />
             <YAxis 
               className="text-xs text-gray-500 dark:text-gray-400"
               tickFormatter={(value) => `${Math.round(value)} ₽`}
               domain={yAxisDomain}
-              width={60}
+              width={70}
+              tick={{ fill: 'currentColor' }}
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend content={<CustomLegend />} />

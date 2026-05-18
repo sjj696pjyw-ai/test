@@ -584,7 +584,13 @@ export default function AnalysisDetail() {
                 </h3>
               </div>
               {priceDynamicsData && priceDynamicsData.length > 0 ? (
-                <PriceDynamicsChart data={priceDynamicsData} />
+                <PriceDynamicsChart 
+                  data={priceDynamicsData} 
+                  dateRange={{
+                    start: analysis.created_at,
+                    end: new Date().toISOString()
+                  }}
+                />
               ) : (
                 <div className="text-center py-8">
                   <p className="text-gray-500 dark:text-gray-400">Нет данных для построения графика</p>
