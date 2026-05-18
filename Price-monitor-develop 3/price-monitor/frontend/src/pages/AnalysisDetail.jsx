@@ -577,28 +577,30 @@ export default function AnalysisDetail() {
         <div className="space-y-6">
           {/* Price Dynamics Chart Block */}
           {analysis.product_links && analysis.product_links.length > 0 && (
-            <div className="card">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  График динамики цен
-                </h3>
-              </div>
-              {priceDynamicsData && priceDynamicsData.length > 0 ? (
-                <PriceDynamicsChart 
-                  data={priceDynamicsData} 
-                  dateRange={{
-                    start: analysis.created_at,
-                    end: new Date().toISOString()
-                  }}
-                />
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-gray-500 dark:text-gray-400">Нет данных для построения графика</p>
-                  <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
-                    График появится автоматически, когда у вас и конкурентов будут товары с историей цен
-                  </p>
+            <div className="card flex justify-center">
+              <div className="w-full max-w-full">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    График динамики цен
+                  </h3>
                 </div>
-              )}
+                {priceDynamicsData && priceDynamicsData.length > 0 ? (
+                  <PriceDynamicsChart 
+                    data={priceDynamicsData} 
+                    dateRange={{
+                      start: analysis.created_at,
+                      end: new Date().toISOString()
+                    }}
+                  />
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500 dark:text-gray-400">Нет данных для построения графика</p>
+                    <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
+                      График появится автоматически, когда у вас и конкурентов будут товары с историей цен
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
