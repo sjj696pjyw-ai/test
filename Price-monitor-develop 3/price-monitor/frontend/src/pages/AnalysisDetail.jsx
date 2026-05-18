@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useLocation } from 'react-router-dom'
 import api from '../utils/api'
-import { ArrowLeft, Download, Table, Link as LinkIcon, X, Check, Settings, Trash2, Edit3, Save, XCircle } from 'lucide-react'
+import { ArrowLeft, Download, Table, Link as LinkIcon, X, Check, Settings, Trash2, Edit3, Save, XCircle, RefreshCw, ExternalLink } from 'lucide-react'
 import { getRegionName } from '../utils/regions'
 import { exportToExcel, exportToCSV, formatPrice, formatDate } from '../utils/export'
 import { PriceComparisonChart, PriceDifferenceChart } from '../components/Charts'
+import { PriceDynamicsChart } from '../components/PriceDynamicsChart'
 import { useToast } from '../context/ToastContext'
 
 const DEMO_DATA = {
@@ -144,6 +145,8 @@ export default function AnalysisDetail() {
   const [userSiteStatus, setUserSiteStatus] = useState(null)
   const [isEditingName, setIsEditingName] = useState(false)
   const [editingName, setEditingName] = useState('')
+  const [isUpdatingPrices, setIsUpdatingPrices] = useState(false)
+  const [priceDynamicsData, setPriceDynamicsData] = useState(null)
   const { error: showError, success } = useToast()
   const isDemo = location.state?.demo === true
 
@@ -164,6 +167,81 @@ export default function AnalysisDetail() {
       console.error('Error fetching analysis:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleUpdatePrices = async (competitorId = null) => {
+    if (isDemo) {
+      showError('Обновление цен недоступно в демо-режиме')
+      return
+    }
+
+    setIsUpdatingPrices(true)
+    try {
+      let response
+      if (competitorId) {
+        response = await api.post(`/analysis/competitor/${competitorId}/update-prices`)
+      } else {
+        response = await api.post(`/analysis/${id}/update-prices`)
+      }
+
+      const result = response.data.result
+      
+      if (response.status === 200 || response.status === 201) {
+        // Fetch updated analysis data
+        await fetchAnalysis()
+        
+        if (competitorId) {
+          success('Цены успешно обновлены')
+        } else {
+          if (result.overall_status === 'success') {
+            success('Цены успешно обновлены по всем конкурентам')
+          } else if (result.overall_status === 'partial') {
+            showError(`По некоторым конкурентам не удалось обновить цену. Обновлено: ${result.success_count}, частично: ${result.partial_count}, ошибок: ${result.error_count}`)
+          }
+        }
+      } else if (response.status === 429) {
+        showError(response.data.message || 'Слишком частые запросы. Попробуйте через 3 минуты.')
+      } else {
+        showError(response.data.message || 'Ошибка обновления цен')
+      }
+    } catch (error) {
+      console.error('Error updating prices:', error)
+      if (error.response?.status === 429) {
+        showError(error.response.data?.message || 'Слишком частые запросы. Попробуйте через 3 минуты.')
+      } else {
+        showError('Ошибка обновления цен')
+      }
+    } finally {
+      setIsUpdatingPrices(false)
+    }
+  }
+
+  const fetchPriceDynamics = async () => {
+    if (isDemo) {
+      // Demo data for price dynamics
+      setPriceDynamicsData([
+        {
+          product_name: 'iPhone 15 Pro 128GB',
+          user_site: true,
+          competitor_name: 'iPhone 15 Pro 128GB',
+          competitor_domain: 'mvideo.ru',
+          product_url: 'https://mvideo.ru/product/1',
+          data_points: [
+            { date: new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0], user_price: 94990, competitor_price: 89990 },
+            { date: new Date(Date.now() - 3 * 86400000).toISOString().split('T')[0], user_price: 93990, competitor_price: 88990 },
+            { date: new Date().toISOString().split('T')[0], user_price: 94990, competitor_price: 89990 }
+          ]
+        }
+      ])
+      return
+    }
+
+    try {
+      const response = await api.get(`/analysis/${id}/price-dynamics`)
+      setPriceDynamicsData(response.data.dynamics)
+    } catch (error) {
+      console.error('Error fetching price dynamics:', error)
     }
   }
 
@@ -373,6 +451,24 @@ export default function AnalysisDetail() {
             <p className="text-gray-600 dark:text-gray-400">
               {formatDate(analysis.created_at)} (UTC) • Регион: {getRegionName(analysis.region)}
             </p>
+            {/* Price update status for analysis */}
+            {!isDemo && (userCompetitor?.products?.length > 0 || competitorList.some(c => c.products?.length > 0)) && (
+              <div className="mt-2 flex items-center space-x-3">
+                <button
+                  onClick={() => handleUpdatePrices()}
+                  disabled={isUpdatingPrices}
+                  className="btn-primary text-sm flex items-center space-x-2"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isUpdatingPrices ? 'animate-spin' : ''}`} />
+                  <span>Обновить цены</span>
+                </button>
+                {userCompetitor?.last_price_update && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Цены актуальны на {new Date(userCompetitor.last_price_update).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })} (UTC)
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex items-center space-x-2">
             <button onClick={handleExportExcel} className="btn-secondary flex items-center space-x-2">
@@ -434,6 +530,33 @@ export default function AnalysisDetail() {
 
       {activeTab === 'report' && (
         <div className="space-y-6">
+          {/* Price Dynamics Chart Block */}
+          {analysis.product_links && analysis.product_links.length > 0 && (
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">График динамики цен</h3>
+                <button
+                  onClick={fetchPriceDynamics}
+                  className="btn-secondary text-sm flex items-center space-x-2"
+                  disabled={!priceDynamicsData}
+                >
+                  <RefreshCw className={`h-4 w-4 ${!priceDynamicsData ? 'animate-spin' : ''}`} />
+                  <span>Загрузить график</span>
+                </button>
+              </div>
+              {priceDynamicsData ? (
+                <PriceDynamicsChart data={priceDynamicsData} />
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-gray-500 dark:text-gray-400">Нажмите "Загрузить график" для отображения динамики цен</p>
+                  <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
+                    График показывает изменение цен по связанным товарам с шагом в сутки
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="card">
             <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Сводный отчёт</h3>
             
@@ -542,22 +665,39 @@ export default function AnalysisDetail() {
         <div className="space-y-6">
           {userCompetitor && (
             <div className="card">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
-                Ваши товары
-                <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">
-                  ({userCompetitor.products?.length || 0})
-                </span>
-                {analysis.user_site && (
-                  <a
-                    href={`https://${analysis.user_site.replace(/^https?:\/\//, '')}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm font-normal text-primary-600 dark:text-primary-400 ml-3 hover:underline"
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Ваши товары
+                  <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">
+                    ({userCompetitor.products?.length || 0})
+                  </span>
+                  {analysis.user_site && (
+                    <a
+                      href={`https://${analysis.user_site.replace(/^https?:\/\//, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-normal text-primary-600 dark:text-primary-400 ml-3 hover:underline"
+                    >
+                      {analysis.user_site}
+                    </a>
+                  )}
+                </h3>
+                {!isDemo && userCompetitor.products?.length > 0 && (
+                  <button
+                    onClick={() => handleUpdatePrices(userCompetitor.id)}
+                    disabled={isUpdatingPrices}
+                    className="btn-secondary text-sm flex items-center space-x-2"
                   >
-                    {analysis.user_site}
-                  </a>
+                    <RefreshCw className={`h-4 w-4 ${isUpdatingPrices ? 'animate-spin' : ''}`} />
+                    <span>Обновить</span>
+                  </button>
                 )}
-              </h3>
+              </div>
+              {userCompetitor.last_price_update && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                  Цены актуальны на {new Date(userCompetitor.last_price_update).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })} (UTC)
+                </p>
+              )}
               {userCompetitor.products?.length > 0 ? (
                 <div className="space-y-2 max-h-96 overflow-y-auto">
                   {userCompetitor.products.map(product => (
@@ -831,15 +971,32 @@ export default function AnalysisDetail() {
                       </a>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
                         {comp.products?.length || 0} товаров • {comp.competitor_type}
+                        {comp.last_price_update && (
+                          <span className="ml-2 text-xs">
+                            Цены актуальны на {new Date(comp.last_price_update).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })} (UTC)
+                          </span>
+                        )}
                       </p>
                     </div>
                   </div>
-                  <Link 
-                    to={`/analysis/${id}/competitor/${comp.id}/selectors`}
-                    className="btn-secondary text-sm"
-                  >
-                    Настроить
-                  </Link>
+                  <div className="flex items-center space-x-2">
+                    {!isDemo && comp.products?.length > 0 && (
+                      <button
+                        onClick={() => handleUpdatePrices(comp.id)}
+                        disabled={isUpdatingPrices}
+                        className="btn-secondary text-sm flex items-center space-x-2"
+                      >
+                        <RefreshCw className={`h-4 w-4 ${isUpdatingPrices ? 'animate-spin' : ''}`} />
+                        <span>Обновить</span>
+                      </button>
+                    )}
+                    <Link 
+                      to={`/analysis/${id}/competitor/${comp.id}/selectors`}
+                      className="btn-secondary text-sm"
+                    >
+                      Настроить
+                    </Link>
+                  </div>
                 </div>
                 {comp.products?.length > 0 ? (
                   <div className="space-y-2 max-h-96 overflow-y-auto">
