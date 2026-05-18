@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import quote, urlparse, parse_qs, unquote
 import time
 import random
-from .helpers import extract_domain, REAL_UA, get_default_headers, setup_selenium_options, is_excluded_domain
+from .helpers import extract_domain, get_default_headers, setup_selenium_options, is_excluded_domain
 
 try:
     from selenium import webdriver
@@ -11,7 +11,6 @@ try:
     from selenium.webdriver.chrome.options import Options as ChromeOptions
     from webdriver_manager.chrome import ChromeDriverManager
     from selenium.webdriver.common.by import By
-    from selenium.common.exceptions import TimeoutException
     SELENIUM_AVAILABLE = True
 except ImportError:
     SELENIUM_AVAILABLE = False
@@ -116,10 +115,10 @@ class DuckDuckGoParser:
                     url = self._extract_ddg_url(href)
                     if url and url not in seen_urls and 'duckduckgo.com' not in url:
                         seen_urls.add(url)
-                        parent = link.find_element(By.XPATH, '..')
                         is_ad = False
                         try:
-                            badge = parent.find_element(By.CSS_SELECTOR, '[class*="badge"], [class*="ad"], [class*="sponsored"]')
+                            parent = link.find_element(By.XPATH, '..')
+                            parent.find_element(By.CSS_SELECTOR, '[class*="badge"], [class*="ad"], [class*="sponsored"]')
                             is_ad = True
                         except:
                             pass

@@ -1,5 +1,5 @@
-from ..models import db, User, Analysis, Competitor, Product, ProductLink, SearchResult
-from ..utils import YandexParser, DuckDuckGoParser, MockSearchParser, SiteParser, extract_domain, is_excluded_domain
+from ..models import db, Analysis, Competitor, Product, ProductLink, SearchResult
+from ..utils import SiteParser, is_excluded_domain
 
 
 class AnalysisService:

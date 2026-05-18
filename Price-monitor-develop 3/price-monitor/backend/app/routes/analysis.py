@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 import requests
 import os
 import json
-from ..models import db, Competitor, Analysis
+from ..models import db, Competitor
 from ..services import (
     AnalysisService, CompetitorService, ProductService,
     ProductLinkService, SearchService, SiteParsingService, PriceUpdateService
@@ -586,8 +586,6 @@ def get_report(analysis_id):
         'region': analysis.region,
         'data': []
     }
-    
-    user_competitor = next((c for c in competitors if c.is_user_site), None)
     
     for link in product_links:
         user_prod = link.user_product
