@@ -9,7 +9,6 @@ from ..services import (
     ProductLinkService, SearchService, SiteParsingService, PriceUpdateService
 )
 from ..utils.domains import is_excluded_domain
-from ..utils.yandex_xml_parser import YandexXMLParser
 
 analysis_bp = Blueprint('analysis', __name__, url_prefix='/api/analysis')
 
@@ -418,31 +417,6 @@ def unlink_products(link_id):
         return jsonify({'message': 'Products unlinked successfully'}), 200
     
     return jsonify({'error': 'Link not found'}), 404
-
-
-@analysis_bp.route('/yandex-xml-status', methods=['GET'])
-@jwt_required()
-def yandex_xml_status():
-    return jsonify({
-        'configured': YandexXMLParser.is_configured(),
-        'docs_url': 'https://xml.yandex.ru/'
-    }), 200
-
-
-@analysis_bp.route('/yandex-xml-config', methods=['PUT'])
-@jwt_required()
-def update_yandex_xml_config():
-    data = request.get_json()
-    key = data.get('key', '')
-    folder_id = data.get('folder_id', '')
-    enabled = data.get('enabled', False)
-
-    config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'config', 'yandex_xml.json')
-    cfg = {'key': key, 'folder_id': folder_id, 'enabled': enabled}
-    with open(config_path, 'w', encoding='utf-8') as f:
-        json.dump(cfg, f, indent=2, ensure_ascii=False)
-
-    return jsonify({'message': 'Настройки Яндекс API сохранены', 'configured': bool(key and enabled)}), 200
 
 
 @analysis_bp.route('/<int:analysis_id>/update-prices', methods=['POST'])

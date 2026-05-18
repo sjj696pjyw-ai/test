@@ -267,31 +267,7 @@ class SearchService:
         except ImportError:
             pass
         
-        # 2. If Yandex.XML is configured, query it for organic + ads
-        try:
-            from ..utils import YandexXMLParser
-            if YandexXMLParser.is_configured():
-                yxml = YandexXMLParser(region=region)
-                yxml_results = yxml.find_competitors(adapted_queries, positions)
-                # Merge Yandex results into competitors, prefer Yandex result types
-                if yxml_results:
-                    existing = {c['domain']: c for c in competitors}
-                    for yc in yxml_results:
-                        d = yc['domain']
-                        if d in existing:
-                            existing[d]['types'] = list(set(existing[d].get('types', []) + yc.get('types', [])))
-                            for q in yc.get('found_in_queries', []):
-                                if q not in existing[d].get('found_in_queries', []):
-                                    existing[d]['found_in_queries'].append(q)
-                                if q not in existing[d].get('positions', {}):
-                                    existing[d]['positions'][q] = yc['positions'].get(q)
-                        else:
-                            existing[d] = yc
-                    competitors = list(existing.values())
-        except ImportError:
-            pass
-        
-        # 3. Apply result type labels based on user selection.
+        # 2. Apply result type labels based on user selection.
         # DuckDuckGo is our primary search source and returns organic listings.
         # When user selects ads (cpc), we label all results as 'ad' since
         # the competitors found via DuckDuckGo are present in the search results
@@ -307,7 +283,7 @@ class SearchService:
                 comp_types.append('ad')
             comp['types'] = comp_types
 
-        # 4. Remove excluded domains (aggregators, marketplaces, search engines)
+        # 3. Remove excluded domains (aggregators, marketplaces, search engines)
         competitors = [c for c in competitors if not is_excluded_domain(c['domain'])]
 
         db.session.commit()
