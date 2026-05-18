@@ -57,8 +57,8 @@ class PriceUpdateService:
                 'status': 'no_selectors'
             }
         
-        # Build URL from catalog_url if available, otherwise from domain
-        url = competitor.catalog_url if competitor.catalog_url else competitor.domain
+        # Build URL from domain
+        url = competitor.domain
         if not url.startswith(('http://', 'https://')):
             url = f'https://{url}'
         
