@@ -66,14 +66,48 @@ class SiteParser:
         soup = BeautifulSoup(html, 'lxml')
         products = []
 
-        name_selectors = name_selector.split(',') if ',' in name_selector else [name_selector]
-        price_selectors = price_selector.split(',') if ',' in price_selector else [price_selector]
+        # Split selectors by comma if multiple provided
+        name_selectors = [s.strip() for s in name_selector.split(',')] if ',' in name_selector else [name_selector]
+        price_selectors = [s.strip() for s in price_selector.split(',')] if ',' in price_selector else [price_selector]
 
-        name_elements = self._try_selectors(soup, name_selectors)
-        price_elements = self._try_selectors(soup, price_selectors)
+        print(f"[DEBUG] Trying name selectors: {name_selectors}")
+        print(f"[DEBUG] Trying price selectors: {price_selectors}")
+
+        # Try each name selector until we find elements
+        name_elements = []
+        for sel in name_selectors:
+            elements = soup.select(sel)
+            if elements:
+                name_elements = elements
+                print(f"[DEBUG] Found {len(elements)} name elements with selector '{sel}'")
+                break
+        
+        # Try each price selector until we find elements
+        price_elements = []
+        for sel in price_selectors:
+            elements = soup.select(sel)
+            if elements:
+                price_elements = elements
+                print(f"[DEBUG] Found {len(elements)} price elements with selector '{sel}'")
+                break
+        
+        if not name_elements:
+            print(f"[WARNING] No name elements found with any of: {name_selectors}")
+            # Debug: show what classes are available
+            all_classes = set()
+            for tag in soup.find_all(class_=True):
+                classes = tag.get('class', [])
+                if isinstance(classes, list):
+                    all_classes.update(classes)
+            print(f"[DEBUG] Available classes (first 20): {list(all_classes)[:20]}")
+        
+        if not price_elements:
+            print(f"[WARNING] No price elements found with any of: {price_selectors}")
+        
         sku_elements = self._try_selectors(soup, [sku_selector]) if sku_selector else []
 
         max_len = max(len(name_elements), len(price_elements))
+        print(f"[DEBUG] Will attempt to parse {max_len} products (names: {len(name_elements)}, prices: {len(price_elements)})")
 
         for i in range(max_len):
             name = name_elements[i].get_text(strip=True) if i < len(name_elements) else ''
@@ -88,7 +122,10 @@ class SiteParser:
                     'currency': 'RUB',
                     'external_id': sku
                 })
+            elif name and price is None:
+                print(f"[DEBUG] Product '{name}' has invalid price: '{price_text}'")
 
+        print(f"[DEBUG] Successfully parsed {len(products)} valid products")
         return products
 
     def verify_selectors(self, html, name_selector, price_selector, sku_selector=None):

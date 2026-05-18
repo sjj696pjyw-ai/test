@@ -65,6 +65,7 @@ class Competitor(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     analysis_id = db.Column(db.Integer, db.ForeignKey('analyses.id'), nullable=False)
     domain = db.Column(db.String(255), nullable=False)
+    catalog_url = db.Column(db.String(500))  # URL of the catalog page for parsing
     competitor_type = db.Column(db.String(20))
     position = db.Column(db.Integer)
     is_user_site = db.Column(db.Boolean, default=False)
@@ -81,6 +82,7 @@ class Competitor(db.Model):
         return {
             'id': self.id,
             'domain': self.domain,
+            'catalog_url': self.catalog_url,
             'competitor_type': self.competitor_type,
             'position': self.position,
             'is_user_site': self.is_user_site,
