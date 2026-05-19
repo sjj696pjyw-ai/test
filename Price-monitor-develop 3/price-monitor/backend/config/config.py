@@ -21,13 +21,6 @@ class Config:
     MAX_POSITIONS = 10
     DEFAULT_POSITIONS = 5
     MAX_QUERIES = 10
-    
-    EXCLUDED_DOMAINS = [
-        'market.yandex.ru', 'avito.ru', 'cian.ru', '2gis.ru', 
-        'drom.ru', 'auto.ru', 'irr.ru', 'ozon.ru', 'wildberries.ru',
-        'dns-shop.ru', 'citilink.ru', 'eldorado.ru', 'technopark.ru',
-        'sbermegamarket.ru', 'mvideo.ru', 'leroymerlin.ru'
-    ]
 
 
 class DevelopmentConfig(Config):
