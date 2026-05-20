@@ -1,5 +1,6 @@
 from ..models import db, Analysis, Competitor, Product, ProductLink
 from ..utils import SiteParser, is_excluded_domain
+from ...config.region_config import REGION_CITIES, REGION_ALIASES, adapt_query_to_city
 
 
 class AnalysisService:
@@ -156,96 +157,6 @@ class ProductLinkService:
     @staticmethod
     def get_analysis_links(analysis_id):
         return ProductLink.query.filter_by(analysis_id=analysis_id).all()
-
-
-REGION_CITIES = {
-    '213': 'Москва',
-    '2': 'Санкт-Петербург',
-    '54': 'Екатеринбург',
-    '47': 'Новосибирск',
-    '43': 'Краснодар',
-    '120': 'Казань',
-    '51': 'Самара',
-    '24': 'Воронеж',
-    '35': 'Нижний Новгород',
-    '39': 'Ростов-на-Дону',
-    '38': 'Волгоград',
-    '59': 'Пермь',
-    '28': 'Уфа',
-    '48': 'Омск',
-    '50': 'Челябинск',
-    '64': 'Саратов',
-    '189': 'Тюмень',
-    '30': 'Красноярск',
-    '66': 'Ижевск',
-    '75': 'Ставрополь',
-    '44': 'Сочи',
-    '58': 'Пенза',
-    '57': 'Оренбург',
-    '192': 'Кемерово',
-    '69': 'Томск',
-    '68': 'Ульяновск',
-    '22': 'Хабаровск',
-    '26': 'Владивосток',
-    '70': 'Тольятти',
-    '49': 'Барнаул',
-}
-
-REGION_ALIASES = {
-    '213': [],
-    '2': ['спб', 'питер', 'sankt-peterburg', 'spb', 'piter'],
-    '54': ['екб', 'ekb'],
-    '47': ['нск', 'nsk', 'новосиб'],
-    '43': ['крд', 'krd'],
-    '51': ['самара'],
-    '24': ['врн', 'vrn'],
-    '35': ['нн', 'нижний'],
-    '39': ['рнд', 'rnd'],
-    '38': ['вг', 'vg'],
-    '59': ['пмр', 'pmr'],
-    '28': ['уфа'],
-    '48': ['омск'],
-    '50': ['члб', 'chlb'],
-    '64': ['срт', 'srt'],
-    '189': ['тюм', 'tym'],
-    '30': ['крск', 'krsk'],
-    '66': ['иж', 'izh'],
-    '75': ['ств', 'stv'],
-    '44': ['сочи'],
-    '58': ['пнз', 'pnz'],
-    '57': ['орб', 'orb'],
-    '192': ['кмр', 'kmr'],
-    '69': ['томск'],
-    '68': ['ульск', 'ulsk'],
-    '22': ['хаб', 'khab'],
-    '26': ['вл', 'vl'],
-    '70': ['тт', 'tt'],
-    '49': ['брн', 'brn'],
-}
-
-
-def adapt_query_to_city(query, region):
-    region_str = str(region)
-    city = REGION_CITIES.get(region_str)
-    if not city:
-        return query
-
-    query_lower = query.lower()
-    # Check full city name
-    if city.lower() in query_lower:
-        return query
-    # Check alternative names
-    aliases = REGION_ALIASES.get(region_str, [])
-    for alias in aliases:
-        if alias in query_lower:
-            return query
-    # Check parts of compound city names
-    city_parts = city.lower().replace('-', ' ').split()
-    for part in city_parts:
-        if len(part) > 3 and part in query_lower:
-            return query
-
-    return f"{query} {city}"
 
 
 class SearchService:

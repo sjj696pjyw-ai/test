@@ -1,4 +1,49 @@
 ```
-# Project-specific
-"Price-monitor-develop
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.ENV
+.ENV.*
+.venv.bak/
+.ENV.bak/
+
+# Generated config files
+config/region_config.pyc
+config/__pycache__/
+
+# Dependencies
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+*.tmp
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+.env.*
+!.env.sample
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+nbproject/
 ```
