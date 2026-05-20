@@ -1,52 +1,26 @@
 ```
-# Environment
-.env
-.env.local
-*.env.*
-
-# Editors
-.vscode/
+# Compiled and build artifacts
+*.pyc
+__pycache__/
 
 # Dependencies
-node_modules/
-venv/
 .venv/
-__pycache__/
-*.egg-info/
-
-# Build artifacts
-dist/
-build/
-target/
-
-# Compiled files
-*.pyc
-*.class
-*.o
-*.obj
-*.exe
-*.dll
-*.so
-*.a
-*.out
+venv/
 
 # Logs and temp files
 *.log
 *.tmp
 *.swp
-*.swo
 
-# System files
-.DS_Store
-Thumbs.db
+# Environment
+.env
+.env.local
+.env.*
 
-# Coverage
-coverage/
-htmlcov/
-.coverage
+# Editors
+.vscode/
+.idea/
 
-# Cache directories
-.mypy_cache/
-.pytest_cache/
-.gradle/
+# Original rules preserved
+*.log
 ```
