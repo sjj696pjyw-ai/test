@@ -1,26 +1,49 @@
 ```
-# Compiled and build artifacts
-*.pyc
+# Python
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.ENV
+.ENV.*
+.venv.bak/
+.ENV.bak/
+
+# Generated config files
+config/region_config.pyc
+config/__pycache__/
 
 # Dependencies
-.venv/
-venv/
-
-# Logs and temp files
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
 *.log
 *.tmp
 *.swp
+*~
+.DS_Store
+Thumbs.db
 
-# Environment
+# Environment variables
 .env
 .env.local
 .env.*
+!.env.sample
 
-# Editors
+# IDE
 .vscode/
 .idea/
-
-# Original rules preserved
-*.log
+*.sublime-project
+*.sublime-workspace
+nbproject/
 ```
