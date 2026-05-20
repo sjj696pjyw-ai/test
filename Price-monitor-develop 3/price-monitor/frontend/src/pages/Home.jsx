@@ -31,9 +31,9 @@ export default function Home() {
                 Анализируйте цены
                 <span className="text-primary-600 dark:text-primary-300"> конкурентов</span> без лишней работы
               </h1>
-              <p className="text-lg sm:text-xl text-gray-600 dark:text-primary-100 mb-8 max-w-xl leading-relaxed">
-                PriceMonitor находит ваших конкурентов в поисковой выдаче, собирает их цены 
-                и показывает, кто дешевле, а кто дороже — всё автоматически.
+              <p className="text-lg sm:text-xl text-gray-600 dark:text-primary-100 mb-8 max-w-2xl leading-relaxed">
+                PriceMonitor помогает выявить конкурентов:<br />найдите их автоматически через поиск
+                или добавьте вручную.<br />Сервис соберет актуальные цены и сравнит их с вашими.
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
                 {!user && (
@@ -103,42 +103,42 @@ export default function Home() {
               {
                 icon: Search,
                 title: 'Поиск конкурентов',
-                desc: 'Автоматический поиск конкурентов в DuckDuckGo и Яндекс. Выдача по вашим запросам с учётом региона.',
+                desc: 'Автоматический поиск в Яндексе или ручной ввод сайтов. Результаты формируются по вашим запросам с учётом выбранного региона.',
                 color: 'text-blue-600 dark:text-blue-400',
                 bg: 'bg-blue-50 dark:bg-blue-900/20'
               },
               {
                 icon: Globe,
                 title: 'Выбор региона',
-                desc: 'Анализ по любому региону России — от Москвы до Владивостока. Запросы автоматически адаптируются под город.',
+                desc: 'Мониторинг в ключевых регионах России — от Москвы до Владивостока. Анализ конкурентов с учётом локальной выдачи.',
                 color: 'text-emerald-600 dark:text-emerald-400',
                 bg: 'bg-emerald-50 dark:bg-emerald-900/20'
               },
               {
                 icon: MousePointerClick,
                 title: 'CSS-селекторы',
-                desc: 'Настройка селекторов для сбора названий и цен с сайтов конкурентов. Работает на любых интернет-магазинах.',
+                desc: 'Гибкая настройка правил извлечения данных под структуру сайта. Укажите, где искать название, цену — система адаптируется.',
                 color: 'text-purple-600 dark:text-purple-400',
                 bg: 'bg-purple-50 dark:bg-purple-900/20'
               },
               {
                 icon: Database,
                 title: 'Сбор цен',
-                desc: 'Автоматический парсинг товаров с вашего сайта и сайтов конкурентов. Извлечение названий, цен и артикулов.',
+                desc: 'Сбор актуальных товаров с ваших ресурсов и сайтов конкурентов. Извлечение ключевых характеристик.',
                 color: 'text-orange-600 dark:text-orange-400',
                 bg: 'bg-orange-50 dark:bg-orange-900/20'
               },
               {
                 icon: BarChart3,
                 title: 'Сравнительный отчёт',
-                desc: 'Наглядное сравнение цен: кто дешевле, кто дороже и на сколько. Все товары сгруппированы и связаны.',
+                desc: 'Наглядное сравнение цен: кто дешевле, кто дороже и на сколько. Все товары автоматически группируются и связываются в единую таблицу.',
                 color: 'text-rose-600 dark:text-rose-400',
                 bg: 'bg-rose-50 dark:bg-rose-900/20'
               },
               {
                 icon: Download,
                 title: 'Экспорт данных',
-                desc: 'Выгрузка отчётов в Excel и CSV. Делитесь результатами с коллегами или передавайте в другие системы.',
+                desc: 'Выгрузка отчётов в Excel и CSV. Удобный формат для анализа, печати или передачи данных коллегам.',
                 color: 'text-cyan-600 dark:text-cyan-400',
                 bg: 'bg-cyan-50 dark:bg-cyan-900/20'
               }
@@ -163,39 +163,33 @@ export default function Home() {
               Как это работает
             </h2>
             <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto text-lg">
-              От поиска до отчёта — четыре простых шага
+              От поиска до отчёта — три простых шага
             </p>
           </div>
 
-          <div className="grid md:grid-cols-4 gap-8 relative">
+          <div className="grid md:grid-cols-3 gap-8 relative">
             {[
               {
                 step: '01',
                 title: 'Создайте анализ',
-                desc: 'Укажите поисковые запросы, регион и ваш сайт. Система найдёт конкурентов в поисковой выдаче.',
-                color: 'from-primary-500 to-primary-600'
-              },
-              {
-                step: '02',
-                title: 'Настройте селекторы',
                 desc: 'Выберите конкурентов и укажите CSS-селекторы для названий и цен на их сайтах.',
                 color: 'from-emerald-500 to-emerald-600'
               },
               {
-                step: '03',
+                step: '02',
                 title: 'Соберите цены',
                 desc: 'Система автоматически спарсит товары и цены с вашего сайта и сайтов конкурентов.',
                 color: 'from-purple-500 to-purple-600'
               },
               {
-                step: '04',
+                step: '03',
                 title: 'Анализируйте',
                 desc: 'Изучите сравнительный отчёт, экспортируйте данные в Excel или CSV.',
                 color: 'from-orange-500 to-orange-600'
               }
             ].map((item, i) => (
               <div key={i} className="relative">
-                {i < 3 && (
+                {i < 2 && (
                   <div className="hidden md:block absolute top-8 left-[60%] w-[80%] h-0.5 bg-gradient-to-r from-primary-200 to-primary-300 dark:from-primary-800 dark:to-primary-700">
                     <ChevronRight className="absolute -right-2 -top-2 h-4 w-4 text-primary-300 dark:text-primary-700" />
                   </div>
@@ -226,22 +220,22 @@ export default function Home() {
             {[
               {
                 icon: Store,
-                title: 'Интернет-магазины',
-                desc: 'Отслеживайте цены конкурентов в своей нише. Будьте в курсе, кто меняет цены и когда.',
+                title: 'Владельцы магазинов',
+                desc: 'Забудьте о ручном мониторинге. Найдите конкурентов автоматически или добавьте сами — система сама сравнит цены.',
                 color: 'text-blue-600 dark:text-blue-400',
                 bg: 'bg-blue-50 dark:bg-blue-900/20'
               },
               {
                 icon: ShoppingBag,
                 title: 'Розничные сети',
-                desc: 'Сравнивайте свой ассортимент с конкурентами. Выявляйте товары, которые нужно срочно переоценить.',
+                desc: 'Единая картина цен по всей сети. Настраивайте сбор под любой сайт и оперативно реагируйте.',
                 color: 'text-purple-600 dark:text-purple-400',
                 bg: 'bg-purple-50 dark:bg-purple-900/20'
               },
               {
                 icon: Users,
                 title: 'Маркетологи',
-                desc: 'Получайте объективные данные для стратегии ценообразования. Забудьте про ручной сбор цен.',
+                desc: 'Объективные данные для акций и скидок. Исключите человеческие ошибки при сборе и выгружайте аналитику в Excel.',
                 color: 'text-orange-600 dark:text-orange-400',
                 bg: 'bg-orange-50 dark:bg-orange-900/20'
               }
@@ -272,27 +266,23 @@ export default function Home() {
               {
                 icon: Clock,
                 title: 'Экономия времени',
-                desc: 'Автоматический сбор данных вместо часов ручного мониторинга',
-                stat: 'до 95%'
+                desc: 'Массовый сбор цен вместо ручного обхода десятков сайтов.',
               },
               {
                 icon: Shield,
                 title: 'Точность',
                 desc: 'Исключение человеческого фактора и ошибок при сборе',
-                stat: '100%'
               },
               {
                 icon: TrendingUp,
-                title: 'Актуальность',
-                desc: 'Цены собираются в реальном времени из поисковой выдачи',
-                stat: 'real-time'
+                title: 'Гибкость',
+                desc: 'Возможность настройки анализа по нужным для вас параметрам',
               }
             ].map((item, i) => (
               <div key={i} className="text-center">
                 <div className="w-16 h-16 bg-primary-50 dark:bg-primary-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
                   <item.icon className="h-8 w-8 text-primary-600 dark:text-primary-400" />
                 </div>
-                <div className="text-2xl font-bold text-primary-600 dark:text-primary-400 mb-1">{item.stat}</div>
                 <h4 className="font-semibold text-gray-900 dark:text-white mb-1">{item.title}</h4>
                 <p className="text-sm text-gray-600 dark:text-gray-400">{item.desc}</p>
               </div>
@@ -309,7 +299,7 @@ export default function Home() {
             <h2 className="text-3xl sm:text-4xl font-bold mb-6">
               Готовы попробовать?
             </h2>
-            <p className="text-white/80 dark:text-primary-100 mb-10 text-lg max-w-2xl mx-auto">
+            <p className="text-white/80 dark:text-primary-100 text-lg text-center whitespace-nowrap mb-8 max-w-full overflow-hidden">
               Начните уже сейчас, чтобы сравнить и анализировать товары конкурентов с вашими.
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-4">
