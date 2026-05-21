@@ -1,4 +1,4 @@
-from ..models import db, Competitor, Product, PriceHistory
+from ..models import db, Competitor, Product, PriceHistory, ProductLink
 from ..utils.site_parser import SiteParser
 from datetime import datetime, timedelta
 
@@ -151,7 +151,7 @@ class PriceUpdateService:
                 new_price = prod_data['price']
                 
                 if old_price != new_price:
-                    # Record price history
+                    # Record price history for competitor product
                     price_history = PriceHistory(
                         product_id=product.id,
                         price=old_price,
@@ -167,6 +167,9 @@ class PriceUpdateService:
                         'old_price': old_price,
                         'new_price': new_price
                     })
+                    
+                    # Record price history for linked user product
+                    PriceUpdateService._record_linked_user_product_price(product.id)
                 
                 updated_count += 1
             else:
@@ -205,6 +208,26 @@ class PriceUpdateService:
             'price_changes': price_changes,
             'last_update': competitor.last_price_update.isoformat()
         }
+    
+    @staticmethod
+    def _record_linked_user_product_price(competitor_product_id):
+        """
+        Record price history for user product linked to this competitor product.
+        Called when competitor's price changes.
+        """
+        # Find all product links where this competitor product is linked
+        product_links = ProductLink.query.filter_by(competitor_product_id=competitor_product_id).all()
+        
+        for link in product_links:
+            user_product = link.user_product
+            if user_product:
+                # Record current user product price to history
+                price_history = PriceHistory(
+                    product_id=user_product.id,
+                    price=user_product.price,
+                    currency=user_product.currency
+                )
+                db.session.add(price_history)
     
     @staticmethod
     def update_analysis_prices(analysis_id):
