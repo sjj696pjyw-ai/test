@@ -207,7 +207,7 @@ export default function Dashboard() {
         <div className="flex justify-center mb-8">
           <div className="card w-full max-w-2xl">
             <h3 className="text-lg font-semibold mb-4">История анализов</h3>
-            <div className="h-48">
+            <div className="h-48 overflow-hidden">
               <AnalysisHistoryChart analyses={analyses} />
             </div>
           </div>
