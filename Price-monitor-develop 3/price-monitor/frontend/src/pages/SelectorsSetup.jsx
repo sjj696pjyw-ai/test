@@ -12,7 +12,6 @@ export default function SelectorsSetup() {
   const [url, setUrl] = useState('')
   const [nameSelector, setNameSelector] = useState('')
   const [priceSelector, setPriceSelector] = useState('')
-  const [, setSkuSelector] = useState('')
   const [loading, setLoading] = useState(false)
   const [verificationResult, setVerificationResult] = useState(null)
   const [error, setError] = useState('')
@@ -319,8 +318,7 @@ export default function SelectorsSetup() {
                     const response = await api.post(`/analysis/competitor/${competitorId}/reparse`, {
                       url: url.startsWith('http') ? url : `https://${url}`,
                       title_selector: nameSelector,
-                      price_selector: priceSelector,
-                      sku_selector: ''
+                      price_selector: priceSelector
                     })
                     setSaved(true)
                     setVerificationResult({
