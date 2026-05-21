@@ -150,6 +150,10 @@ class PriceUpdateService:
                 old_price = product.price
                 new_price = prod_data['price']
                 
+                # Record price history for linked user product (before updating competitor price)
+                # This ensures we capture the current state before any changes
+                PriceUpdateService._record_linked_user_product_price(product.id)
+                
                 if old_price != new_price:
                     # Record price history for competitor product
                     price_history = PriceHistory(
@@ -167,9 +171,6 @@ class PriceUpdateService:
                         'old_price': old_price,
                         'new_price': new_price
                     })
-                    
-                    # Record price history for linked user product
-                    PriceUpdateService._record_linked_user_product_price(product.id)
                 
                 updated_count += 1
             else:
