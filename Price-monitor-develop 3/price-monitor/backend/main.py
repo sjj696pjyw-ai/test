@@ -12,14 +12,6 @@ def init_db():
     with app.app_context():
         db.create_all()
         
-        demo = User.query.filter_by(email='demo@demo.com').first()
-        if not demo:
-            demo = User(email='demo@demo.com')
-            db.session.add(demo)
-        demo.set_password('demo')
-        db.session.commit()
-        print("Demo user ready: demo@demo.com / demo")
-        
         print("Database initialized successfully!")
 
 

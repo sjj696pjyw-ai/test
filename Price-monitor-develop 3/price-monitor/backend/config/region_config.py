@@ -66,23 +66,40 @@ REGION_ALIASES = {
 }
 
 
-def get_region_code_by_name(region_name: str) -> str | None:
+def get_region_code(city_name: str) -> str:
     """
-    Возвращает код региона по его названию или алиасу.
+    Возвращает код региона по названию города или его алиасу.
+    Если город не найден, возвращает код Москвы ('213') по умолчанию.
     """
-    region_name_lower = region_name.lower().strip()
-    
-    # Прямой поиск по названию города
+    city_lower = city_name.lower().strip()
+
+    # Прямой поиск по названию
     for code, name in REGION_CITIES.items():
-        if name.lower() == region_name_lower:
+        if name.lower() == city_lower:
             return code
-            
+
     # Поиск по алиасам
     for code, aliases in REGION_ALIASES.items():
-        if region_name_lower in aliases:
+        if city_lower in aliases:
             return code
-            
-    return None
+
+    return '213'  # Default to Moscow
+
+
+def adapt_query_to_city(query: str, city_name: str) -> str:
+    """
+    Модифицирует поисковый запрос, добавляя название города для гео-таргетинга,
+    если оно еще не добавлено.
+    """
+    city_lower = city_name.lower()
+    query_lower = query.lower()
+
+    # Проверяем, есть ли уже город в запросе
+    if city_lower in query_lower:
+        return query
+
+    # Добавляем город в конец запроса
+    return f"{query} {city_name}"
 
 
 def get_region_name_by_code(code: str) -> str | None:

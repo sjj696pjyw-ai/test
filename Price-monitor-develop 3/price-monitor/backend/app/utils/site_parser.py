@@ -59,7 +59,7 @@ class SiteParser:
             print(f"Requests fetch error for {url}: {e}")
             return None
 
-    def parse_products(self, html, name_selector, price_selector, sku_selector=None):
+    def parse_products(self, html, name_selector, price_selector):
         if not html:
             return []
 
@@ -104,8 +104,6 @@ class SiteParser:
         if not price_elements:
             print(f"[WARNING] No price elements found with any of: {price_selectors}")
         
-        sku_elements = self._try_selectors(soup, [sku_selector]) if sku_selector else []
-
         max_len = max(len(name_elements), len(price_elements))
         print(f"[DEBUG] Will attempt to parse {max_len} products (names: {len(name_elements)}, prices: {len(price_elements)})")
 
@@ -113,14 +111,12 @@ class SiteParser:
             name = name_elements[i].get_text(strip=True) if i < len(name_elements) else ''
             price_text = price_elements[i].get_text(strip=True) if i < len(price_elements) else ''
             price = self._clean_price(price_text)
-            sku = sku_elements[i].get_text(strip=True) if i < len(sku_elements) else None
-
+            
             if name and price is not None:
                 products.append({
                     'name': name,
                     'price': price,
-                    'currency': 'RUB',
-                    'external_id': sku
+                    'currency': 'RUB'
                 })
             elif name and price is None:
                 print(f"[DEBUG] Product '{name}' has invalid price: '{price_text}'")
@@ -128,7 +124,7 @@ class SiteParser:
         print(f"[DEBUG] Successfully parsed {len(products)} valid products")
         return products
 
-    def verify_selectors(self, html, name_selector, price_selector, sku_selector=None):
+    def verify_selectors(self, html, name_selector, price_selector):
         if not html:
             return {'valid': False, 'name_count': 0, 'price_count': 0, 'sample_names': [], 'sample_prices': []}
 
@@ -136,14 +132,12 @@ class SiteParser:
 
         name_elements = self._try_selectors(soup, [name_selector])
         price_elements = self._try_selectors(soup, [price_selector])
-        sku_elements = self._try_selectors(soup, [sku_selector]) if sku_selector else []
 
         def is_percentage(text):
             return '%' in text or 'скидк' in text.lower()
 
         sample_names = [el.get_text(strip=True) for el in name_elements[:5] if el.get_text(strip=True)]
         sample_prices = [el.get_text(strip=True) for el in price_elements[:5] if el.get_text(strip=True) and not is_percentage(el.get_text(strip=True))]
-        sample_skus = [el.get_text(strip=True) for el in sku_elements[:5] if el.get_text(strip=True)]
 
         valid = len(name_elements) > 0 and len(price_elements) > 0
         mismatch = abs(len(name_elements) - len(price_elements)) > max(len(name_elements), len(price_elements)) * 0.3 if valid else False
@@ -152,12 +146,10 @@ class SiteParser:
             'valid': valid,
             'name_count': len(name_elements),
             'price_count': len(price_elements),
-            'sku_count': len(sku_elements),
             'mismatch_warning': mismatch,
             'mismatch_message': f'Найдено названий: {len(name_elements)}, цен: {len(price_elements)}. Проверьте селекторы.' if mismatch else None,
             'sample_names': sample_names,
             'sample_prices': sample_prices,
-            'sample_skus': sample_skus
         }
 
     def test_selector(self, url, selector, selector_type='name'):

@@ -1,6 +1,6 @@
 from ..models import db, Analysis, Competitor, Product, ProductLink
 from ..utils import SiteParser, is_excluded_domain
-from ...config.region_config import REGION_CITIES, REGION_ALIASES, adapt_query_to_city
+from config.region_config import REGION_CITIES, REGION_ALIASES, adapt_query_to_city
 
 
 class AnalysisService:
@@ -70,13 +70,11 @@ class CompetitorService:
         return Competitor.query.filter_by(analysis_id=analysis_id).all()
 
     @staticmethod
-    def update_selectors(competitor_id, title_selector, price_selector, sku_selector=None, url=None):
+    def update_selectors(competitor_id, title_selector, price_selector, url=None):
         competitor = Competitor.query.get(competitor_id)
         if competitor:
             competitor.title_selector = title_selector
             competitor.price_selector = price_selector
-            competitor.sku_selector = sku_selector
-            # Update domain (catalog URL) if provided
             if url:
                 competitor.domain = url
             db.session.commit()
@@ -165,12 +163,10 @@ class SearchService:
         if result_types is None:
             result_types = ['organic']
 
-        # Adapt queries to include city name based on region
         adapted_queries = [adapt_query_to_city(q, region) for q in queries]
 
         competitors = []
         
-        # 1. Try DuckDuckGo first (returns real search results, organic only)
         try:
             from ..utils import DuckDuckGoParser
             ddg = DuckDuckGoParser(region=region)
@@ -178,11 +174,6 @@ class SearchService:
         except ImportError:
             pass
         
-        # 2. Apply result type labels based on user selection.
-        # DuckDuckGo is our primary search source and returns organic listings.
-        # When user selects ads (cpc), we label all results as 'ad' since
-        # the competitors found via DuckDuckGo are present in the search results
-        # that include both organic and sponsored listings.
         wants_organic = 'organic' in result_types
         wants_ads = 'cpc' in result_types or 'ads' in result_types or 'ad' in result_types
 
@@ -194,7 +185,6 @@ class SearchService:
                 comp_types.append('ad')
             comp['types'] = comp_types
 
-        # 3. Remove excluded domains (aggregators, marketplaces, search engines)
         competitors = [c for c in competitors if not is_excluded_domain(c['domain'])]
 
         db.session.commit()
@@ -203,11 +193,11 @@ class SearchService:
     @staticmethod
     def save_selected_competitors(analysis_id, selected_domains):
         saved_competitors = []
-        for domain in selected_domains[:3]:  # Limit to 3
+        for domain in selected_domains[:3]:
             competitor = CompetitorService.add_competitor(
                 analysis_id=analysis_id,
                 domain=domain,
-                competitor_type='organic'  # Default type
+                competitor_type='organic'
             )
             saved_competitors.append(competitor)
         return saved_competitors
@@ -215,20 +205,19 @@ class SearchService:
 
 class SiteParsingService:
     @staticmethod
-    def parse_competitor_site(competitor_id, url, title_selector, price_selector, sku_selector=None):
+    def parse_competitor_site(competitor_id, url, title_selector, price_selector):
         parser = SiteParser()
         html = parser.get_page(url)
         
         if not html:
             return []
         
-        products = parser.parse_products(html, title_selector, price_selector, sku_selector)
+        products = parser.parse_products(html, title_selector, price_selector)
         
         competitor = Competitor.query.get(competitor_id)
         if competitor:
             competitor.title_selector = title_selector
             competitor.price_selector = price_selector
-            competitor.sku_selector = sku_selector
         
         saved_products = []
         for prod in products:
@@ -244,14 +233,14 @@ class SiteParsingService:
         return saved_products
 
     @staticmethod
-    def verify_selectors(competitor_id, url, title_selector, price_selector, sku_selector=None):
+    def verify_selectors(competitor_id, url, title_selector, price_selector):
         parser = SiteParser()
         html = parser.get_page(url)
         
         if not html:
             return {'valid': False, 'name_count': 0, 'price_count': 0}
         
-        return parser.verify_selectors(html, title_selector, price_selector, sku_selector)
+        return parser.verify_selectors(html, title_selector, price_selector)
 
     @staticmethod
     def test_selector(competitor_id, url, selector, selector_type):

@@ -236,10 +236,9 @@ def update_competitor(competitor_id):
     
     title_selector = data.get('title_selector')
     price_selector = data.get('price_selector')
-    sku_selector = data.get('sku_selector')
     url = data.get('url')  # Optional: update catalog URL
     
-    competitor = CompetitorService.update_selectors(competitor_id, title_selector, price_selector, sku_selector, url)
+    competitor = CompetitorService.update_selectors(competitor_id, title_selector, price_selector, url)
     
     if not competitor:
         return jsonify({'error': 'Competitor not found'}), 404
@@ -269,7 +268,6 @@ def reparse_competitor(competitor_id):
     url = data.get('url')
     title_selector = data.get('title_selector')
     price_selector = data.get('price_selector')
-    sku_selector = data.get('sku_selector')
     
     if not all([url, title_selector, price_selector]):
         return jsonify({'error': 'URL и селекторы обязательны'}), 400
@@ -277,7 +275,6 @@ def reparse_competitor(competitor_id):
     # Update competitor settings
     competitor.title_selector = title_selector
     competitor.price_selector = price_selector
-    competitor.sku_selector = sku_selector
     if url:
         competitor.domain = url
     
@@ -288,8 +285,7 @@ def reparse_competitor(competitor_id):
         competitor_id=competitor_id,
         url=url,
         title_selector=title_selector,
-        price_selector=price_selector,
-        sku_selector=sku_selector
+        price_selector=price_selector
     )
     
     return jsonify({
@@ -343,7 +339,6 @@ def parse_competitor(competitor_id):
     url = data.get('url')
     title_selector = data.get('title_selector')
     price_selector = data.get('price_selector')
-    sku_selector = data.get('sku_selector')
     
     if not all([url, title_selector, price_selector]):
         return jsonify({'error': 'URL and selectors are required'}), 400
@@ -352,8 +347,7 @@ def parse_competitor(competitor_id):
         competitor_id=competitor_id,
         url=url,
         title_selector=title_selector,
-        price_selector=price_selector,
-        sku_selector=sku_selector
+        price_selector=price_selector
     )
     
     return jsonify({
@@ -373,14 +367,12 @@ def verify_selectors(competitor_id):
     url = data.get('url')
     title_selector = data.get('title_selector')
     price_selector = data.get('price_selector')
-    sku_selector = data.get('sku_selector')
     
     result = SiteParsingService.verify_selectors(
         competitor_id=competitor_id,
         url=url,
         title_selector=title_selector,
-        price_selector=price_selector,
-        sku_selector=sku_selector
+        price_selector=price_selector
     )
     
     return jsonify(result), 200
