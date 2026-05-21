@@ -48,8 +48,33 @@ class PriceUpdateService:
                 'status': 'rate_limited'
             }
         
-        # Check if selectors are configured
+        # Check if selectors are configured (skip for user site without selectors - use current price)
         if not competitor.title_selector or not competitor.price_selector:
+            # For user site without selectors, just record current price as history
+            if competitor.is_user_site:
+                products = Product.query.filter_by(competitor_id=competitor_id).all()
+                for product in products:
+                    # Record current price to history
+                    price_history = PriceHistory(
+                        product_id=product.id,
+                        price=product.price,
+                        currency=product.currency
+                    )
+                    db.session.add(price_history)
+                
+                competitor.last_price_update = datetime.utcnow()
+                competitor.update_status = 'success'
+                db.session.commit()
+                
+                return {
+                    'success': True,
+                    'status': 'success',
+                    'competitor_id': competitor_id,
+                    'competitor_domain': competitor.domain,
+                    'updated_count': len(products),
+                    'is_user_site': True
+                }
+
             print(f"[DEBUG] Competitor {competitor_id} has no selectors configured")
             return {
                 'success': False,
