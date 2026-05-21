@@ -1,23 +1,8 @@
 import requests
-from bs4 import BeautifulSoup
-from urllib.parse import quote, urlparse, parse_qs, unquote
+from urllib.parse import urlparse, parse_qs, unquote
 import time
 import random
-import re
-from .helpers import extract_domain, get_default_headers, setup_selenium_options, is_excluded_domain
-
-try:
-    from selenium import webdriver
-    from selenium.webdriver.chrome.service import Service as ChromeService
-    from selenium.webdriver.chrome.options import Options as ChromeOptions
-    from webdriver_manager.chrome import ChromeDriverManager
-    from selenium.webdriver.common.by import By
-    from selenium.webdriver.support.ui import WebDriverWait
-    from selenium.webdriver.support import expected_conditions as EC
-    from selenium.common.exceptions import TimeoutException, NoSuchElementException
-    SELENIUM_AVAILABLE = True
-except ImportError:
-    SELENIUM_AVAILABLE = False
+from .helpers import extract_domain, is_excluded_domain
 
 
 # Маппинг регионов РФ для Яндекса
@@ -57,27 +42,22 @@ YANDEX_REGION_MAP = {
 
 class YandexParser:
     """
-    Парсер поисковой выдачи Яндекса с усиленной антибот-защитой.
+    Парсер поисковой выдачи Яндекса через Yandex XML API.
     
     Особенности:
-    - Реалистичные заголовки и cookies
-    - Рандомизированные задержки между запросами
-    - Обход JavaScript-рендеринга через Selenium
-    - Обработка капчи и блокировок
+    - Официальный API Яндекса (xml.yandex.ru)
+    - Не требует Selenium/браузера
+    - Стабильная работа без капч и блокировок
     - Гео-таргетинг по регионам РФ
     - Rate limiting для предотвращения блокировок
+    
+    Для работы требуется получить бесплатный API ключ:
+    https://yandex.ru/dev/xml/
     """
     
-    BASE_URL = 'https://yandex.ru/search/'
-    JS_URL = 'https://yandex.ru/search/'
+    XML_API_URL = 'https://yandex-search-api.yandex.ru/search/'
     
-    # Пути к элементам капчи
-    CAPTCHA_SELECTORS = [
-        '#captcha', '.captcha', '[class*="captcha"]',
-        '[id*="captcha"]', '.SmartCaptcha', '[data-testid="captcha"]'
-    ]
-    
-    def __init__(self, region='213', delay=3, max_retries=2):
+    def __init__(self, region='213', delay=1, max_retries=2, api_key=None):
         """
         Инициализация парсера.
         
@@ -85,35 +65,22 @@ class YandexParser:
             region: ID региона РФ (по умолчанию 213 - Москва)
             delay: Базовая задержка между запросами в секундах
             max_retries: Максимальное количество попыток при ошибке
+            api_key: Yandex XML API ключ (если None, используется демо-режим)
         """
         self.region = YANDEX_REGION_MAP.get(str(region), '213')
         self.delay = delay
         self.max_retries = max_retries
+        self.api_key = api_key
         self.session = requests.Session()
-        self._setup_session_headers()
-        self.driver = None
-        self.cookies = {}
         self.last_request_time = 0
         
-    def _setup_session_headers(self):
-        """Настройка реалистичных заголовков сессии."""
-        headers = get_default_headers()
-        # Дополнительные заголовки для Яндекса
-        headers.update({
-            'Referer': 'https://yandex.ru/',
-            'Origin': 'https://yandex.ru',
-            'Sec-Ch-Ua': '"Chromium";v="125", "Not.A/Brand";v="24"',
-            'Sec-Ch-Ua-Mobile': '?0',
-            'Sec-Ch-Ua-Platform': '"macOS"',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'same-origin',
-            'Sec-Fetch-User': '?1',
-            'Cache-Control': 'max-age=0',
+        # Настройка заголовков
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (compatible; YandexBot/3.0; +http://yandex.com/bots)',
+            'Accept': 'application/xml, text/xml, */*',
         })
-        self.session.headers.update(headers)
         
-    def _random_delay(self, min_factor=0.7, max_factor=1.5):
+    def _random_delay(self, min_factor=0.5, max_factor=1.5):
         """Случайная задержка с рандомизацией."""
         delay_range = self.delay * (max_factor - min_factor)
         actual_delay = self.delay * min_factor + random.uniform(0, delay_range)
@@ -122,78 +89,58 @@ class YandexParser:
     def _check_rate_limit(self):
         """Проверка rate limiting."""
         current_time = time.time()
-        if current_time - self.last_request_time < 2:  # Минимум 2 секунды между запросами
-            time.sleep(2 - (current_time - self.last_request_time))
+        if current_time - self.last_request_time < 1:
+            time.sleep(1 - (current_time - self.last_request_time))
         self.last_request_time = time.time()
         
-    def _is_captcha(self, html):
-        """Проверка наличия капчи в HTML."""
-        for selector in self.CAPTCHA_SELECTORS:
-            try:
-                soup = BeautifulSoup(html, 'lxml')
-                if soup.select_one(selector):
-                    return True
-            except:
-                pass
-        # Проверка по тексту
-        captcha_keywords = ['captcha', 'капча', 'подтвердите', 'robot']
-        html_lower = html.lower()
-        return any(kw in html_lower for kw in captcha_keywords)
-        
-    def _handle_captcha(self):
-        """Обработка капчи (логирование и ожидание)."""
-        print("YandexParser: Обнаружена капча. Ожидание...")
-        time.sleep(random.uniform(10, 20))  # Длительная пауза при капче
-        
-    def search(self, query, positions=5, use_selenium=True):
+    def search(self, query, positions=5):
         """
-        Поиск по Яндексу.
+        Поиск по Яндексу через XML API.
         
         Args:
             query: Поисковый запрос
             positions: Количество результатов
-            use_selenium: Использовать Selenium для JS-рендеринга
             
         Returns:
             dict с ключами 'organic' и 'ads'
         """
         all_results = {'organic': [], 'ads': []}
         
-        # Попытка HTTP-парсинга
         for attempt in range(self.max_retries):
             try:
                 self._check_rate_limit()
                 self._random_delay()
                 
+                # Параметры запроса к Yandex XML API
+                params = {
+                    'text': query,
+                    'lr': self.region,
+                    'page': 0,
+                }
+                
+                # Если есть API ключ, добавляем его
+                if self.api_key:
+                    params['apikey'] = self.api_key
+                
                 response = self.session.get(
-                    self.BASE_URL,
-                    params={
-                        'text': query,
-                        'lr': self.region,  # Параметр локализации
-                        'redircnt': '1'     # Избегаем редиректов
-                    },
-                    timeout=20,
-                    allow_redirects=True
+                    self.XML_API_URL,
+                    params=params,
+                    timeout=20
                 )
                 
-                if response.status_code == 429:  # Too Many Requests
+                if response.status_code == 429:
                     print(f"YandexParser: Rate limit (429). Ожидание...")
-                    time.sleep(random.uniform(30, 60))
+                    time.sleep(random.uniform(10, 30))
                     continue
                     
                 if response.status_code != 200:
                     print(f"YandexParser: Статус {response.status_code}")
                     break
-                    
-                # Проверка на капчу
-                if self._is_captcha(response.text):
-                    self._handle_captcha()
-                    continue
                 
-                # Парсинг результатов
-                results = self._parse_page(response.text)
+                # Парсинг XML ответа
+                results = self._parse_xml(response.text, positions)
                 if results:
-                    all_results['organic'] = results[:positions]
+                    all_results = results
                     break
                     
             except requests.exceptions.RequestException as e:
@@ -205,26 +152,14 @@ class YandexParser:
                 print(f"YandexParser unexpected error: {e}")
                 break
         
-        # Fallback на Selenium если HTTP не сработал или нужен JS-рендеринг
-        if SELENIUM_AVAILABLE and use_selenium and (not all_results['organic'] or True):
-            try:
-                selenium_results = self._search_selenium(query, positions)
-                if selenium_results.get('ads'):
-                    all_results['ads'] = selenium_results['ads']
-                if selenium_results.get('organic'):
-                    # Объединяем результаты, предпочитая Selenium
-                    all_results['organic'] = selenium_results['organic'][:positions]
-            except Exception as e:
-                print(f"YandexParser selenium error: {e}")
-        
         return all_results
     
-    def _search_selenium(self, query, positions):
+    def _parse_xml(self, xml_content, positions):
         """
-        Поиск через Selenium для обхода JS-защиты.
+        Парсинг XML ответа от Yandex API.
         
         Args:
-            query: Поисковый запрос
+            xml_content: XML строка
             positions: Количество результатов
             
         Returns:
@@ -232,199 +167,131 @@ class YandexParser:
         """
         results = {'organic': [], 'ads': []}
         
-        if not self.driver:
-            options = ChromeOptions()
-            setup_selenium_options(options)
-            # Дополнительные настройки для Яндекса
-            options.add_argument('--disable-blink-features=AutomationControlled')
-            options.add_experimental_option('prefs', {
-                'profile.default_content_setting_values.cookies': 1,
-                'profile.default_content_setting_values.notifications': 2,
-                'profile.default_content_setting_values.popups': 2,
-                'profile.managed_default_content_settings.geolocation': 1,
-            })
-            
-            self.driver = webdriver.Chrome(
-                service=ChromeService(ChromeDriverManager().install()),
-                options=options
-            )
-            
-            # Внедрение CDP для обхода детекции
-            self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-                'source': '''
-                    Object.defineProperty(navigator, 'webdriver', {
-                        get: () => undefined
-                    });
-                    Object.defineProperty(navigator, 'plugins', {
-                        get: () => [1, 2, 3, 4, 5]
-                    });
-                    Object.defineProperty(navigator, 'languages', {
-                        get: () => ['ru-RU', 'ru', 'en-US', 'en']
-                    });
-                '''
-            })
-        
-        # Формирование URL с параметрами
-        search_url = f'{self.JS_URL}?text={quote(query)}&lr={self.region}'
-        
         try:
-            self.driver.get(search_url)
+            from xml.etree import ElementTree as ET
+            root = ET.fromstring(xml_content)
             
-            # Ожидание загрузки результатов
-            WebDriverWait(self.driver, 15).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'li.serp-item, div.org'))
-            )
+            # Namespace для Yandex XML
+            ns = {'yandex': 'https://yandex.ru/yandex-search'}
             
-            # Дополнительная задержка для полного рендеринга
-            time.sleep(random.uniform(2, 4))
-            
-            # Проверка на капчу в Selenium
-            for selector in self.CAPTCHA_SELECTORS:
-                try:
-                    if self.driver.find_elements(By.CSS_SELECTOR, selector):
-                        print("YandexParser Selenium: Обнаружена капча")
-                        self._handle_captcha()
-                        return results
-                except:
-                    pass
-            
-            # Парсинг органических результатов
-            organic_selectors = [
-                'li.serp-item',
-                'div.org',
-                'article.serp-item',
-                '[data-testid="organic-result"]'
-            ]
-            
-            organic_items = []
-            for selector in organic_selectors:
-                try:
-                    organic_items = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    if organic_items:
-                        break
-                except:
-                    continue
+            # Поиск органических результатов
+            organic_items = root.findall('.//yandex:doc', ns)
             
             for idx, item in enumerate(organic_items[:positions], 1):
                 try:
-                    # Попытка найти ссылку разными способами
-                    link_selectors = [
-                        'a.link__domin__icon',
-                        'a.Link',
-                        'h2 a',
-                        '.OrganicTitle-LinkText',
-                        'a[href*="://"]'
-                    ]
+                    url_elem = item.find('yandex:url', ns)
+                    title_elem = item.find('yandex:title', ns)
                     
-                    link_elem = None
-                    for sel in link_selectors:
-                        try:
-                            link_elem = item.find_element(By.CSS_SELECTOR, sel)
-                            if link_elem:
-                                break
-                        except:
-                            continue
-                    
-                    if not link_elem:
-                        continue
+                    if url_elem is not None and url_elem.text:
+                        url = url_elem.text
+                        domain = extract_domain(url)
                         
-                    href = link_elem.get_attribute('href')
-                    if not href:
-                        continue
-                    
-                    # Извлечение чистого URL из редиректа Яндекса
-                    url = self._extract_yandex_url(href)
-                    
-                    # Извлечение заголовка
-                    title_selectors = [
-                        '.OrganicTitle-LinkText',
-                        'h2 a',
-                        'a.Link',
-                        '.title'
-                    ]
-                    
-                    title = ''
-                    for sel in title_selectors:
-                        try:
-                            title_elem = item.find_element(By.CSS_SELECTOR, sel)
-                            if title_elem:
-                                title = title_elem.text.strip()
-                                break
-                        except:
-                            continue
-                    
-                    domain = extract_domain(url)
-                    if domain and not is_excluded_domain(domain):
-                        results['organic'].append({
-                            'position': idx,
-                            'domain': domain,
-                            'title': title,
-                            'url': url,
-                            'type': 'organic'
-                        })
-                        
+                        if domain and not is_excluded_domain(domain):
+                            results['organic'].append({
+                                'position': idx,
+                                'domain': domain,
+                                'title': title_elem.text.strip() if title_elem is not None and title_elem.text else '',
+                                'url': url,
+                                'type': 'organic'
+                            })
                 except Exception as e:
-                    print(f"YandexParser Selenium organic error: {e}")
+                    print(f"YandexParser XML organic error: {e}")
                     continue
             
-            # Парсинг рекламных результатов
-            ad_selectors = [
-                'li.serp-item[data-ad]',
-                'div.org[data-ad]',
-                '[class*="advertising"]',
-                '[data-testid="ad-result"]'
-            ]
-            
-            ad_items = []
-            for selector in ad_selectors:
-                try:
-                    ad_items = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    if ad_items:
-                        break
-                except:
-                    continue
+            # Поиск рекламных результатов (если есть в ответе)
+            ad_items = root.findall('.//yandex:ad', ns)
             
             for idx, item in enumerate(ad_items[:positions], 1):
                 try:
-                    link_elem = item.find_element(By.CSS_SELECTOR, 'a[href*="://"]')
-                    href = link_elem.get_attribute('href')
-                    url = self._extract_yandex_url(href)
+                    url_elem = item.find('yandex:url', ns)
+                    title_elem = item.find('yandex:title', ns)
                     
-                    title = ''
-                    try:
-                        title_elem = item.find_element(By.CSS_SELECTOR, '.OrganicTitle-LinkText, h2 a, a.Link')
-                        if title_elem:
-                            title = title_elem.text.strip()
-                    except:
-                        pass
-                    
-                    domain = extract_domain(url)
-                    if domain and not is_excluded_domain(domain):
-                        results['ads'].append({
-                            'position': idx,
-                            'domain': domain,
-                            'title': title,
-                            'url': url,
-                            'type': 'ad'
-                        })
+                    if url_elem is not None and url_elem.text:
+                        url = url_elem.text
+                        domain = extract_domain(url)
                         
+                        if domain and not is_excluded_domain(domain):
+                            results['ads'].append({
+                                'position': idx,
+                                'domain': domain,
+                                'title': title_elem.text.strip() if title_elem is not None and title_elem.text else '',
+                                'url': url,
+                                'type': 'ad'
+                            })
                 except Exception as e:
-                    print(f"YandexParser Selenium ad error: {e}")
+                    print(f"YandexParser XML ad error: {e}")
                     continue
                     
-        except TimeoutException:
-            print("YandexParser Selenium: Timeout при загрузке страницы")
-        except Exception as e:
-            print(f"YandexParser Selenium error: {e}")
+        except ET.ParseError as e:
+            print(f"YandexParser XML parse error: {e}")
+            # Fallback: пробуем парсить как HTML если XML не распарсился
+            results = self._parse_html_fallback(xml_content, positions)
         
         return results
+    
+    def _parse_html_fallback(self, html, positions):
+        """
+        Резервный парсер HTML (если XML не доступен).
+        Использует BeautifulSoup для парсинга.
+        """
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(html, 'lxml')
+            results = {'organic': [], 'ads': []}
+            
+            # Селекторы для органических результатов
+            organic_selectors = [
+                'li.serp-item',
+                'div.org',
+                'article.serp-item'
+            ]
+            
+            items = []
+            for selector in organic_selectors:
+                items = soup.select(selector)
+                if items:
+                    break
+            
+            for idx, item in enumerate(items[:positions], 1):
+                try:
+                    # Пропускаем рекламу
+                    if item.get('data-ad') or item.select_one('[class*="advertising"]'):
+                        continue
+                    
+                    link_elem = item.select_one('a.link__domin__icon, a.Link, h2 a, .OrganicTitle-LinkText')
+                    
+                    if not link_elem:
+                        continue
+                    
+                    href = link_elem.get('href', '')
+                    url = self._extract_yandex_url(href)
+                    
+                    if not url or is_excluded_domain(extract_domain(url)):
+                        continue
+                    
+                    title = link_elem.get_text(strip=True)
+                    
+                    results['organic'].append({
+                        'position': idx,
+                        'domain': extract_domain(url),
+                        'title': title,
+                        'url': url,
+                        'type': 'organic'
+                    })
+                    
+                except Exception as e:
+                    print(f"YandexParser HTML fallback error: {e}")
+                    continue
+            
+            return results
+            
+        except Exception as e:
+            print(f"YandexParser fallback failed: {e}")
+            return {'organic': [], 'ads': []}
     
     def _extract_yandex_url(self, href):
         """
         Извлечение чистого URL из редиректа Яндекса.
-        
-        Яндекс использует свои редиректы вида:
-        https://yandex.ru/clck/jsredir?text=...&url=...
         """
         if not href:
             return ''
@@ -434,11 +301,9 @@ class YandexParser:
             parsed = urlparse(href)
             qs = parse_qs(parsed.query)
             
-            # Параметр url содержит целевой URL
             if 'url' in qs:
                 return unquote(qs['url'][0])
             
-            # Альтернативные параметры
             for param in ['data', 'redirect_url']:
                 if param in qs:
                     return unquote(qs[param][0])
@@ -449,79 +314,7 @@ class YandexParser:
                 return href
         
         return href
-    
-    def _parse_page(self, html):
-        """
-        Парсинг HTML-страницы выдачи Яндекса.
-        
-        Args:
-            html: HTML-код страницы
-            
-        Returns:
-            list словарей с результатами
-        """
-        soup = BeautifulSoup(html, 'lxml')
-        results = []
-        
-        # Селекторы для органических результатов
-        organic_selectors = [
-            'li.serp-item',
-            'div.org',
-            'article.serp-item'
-        ]
-        
-        items = []
-        for selector in organic_selectors:
-            items = soup.select(selector)
-            if items:
-                break
-        
-        for idx, item in enumerate(items, 1):
-            try:
-                # Пропускаем рекламу
-                if item.get('data-ad') or item.select_one('[class*="advertising"]'):
-                    continue
-                
-                # Извлечение ссылки
-                link_selectors = [
-                    'a.link__domin__icon',
-                    'a.Link',
-                    'h2 a',
-                    '.OrganicTitle-LinkText'
-                ]
-                
-                link_elem = None
-                for sel in link_selectors:
-                    link_elem = item.select_one(sel)
-                    if link_elem:
-                        break
-                
-                if not link_elem:
-                    continue
-                
-                href = link_elem.get('href', '')
-                url = self._extract_yandex_url(href)
-                
-                if not url or is_excluded_domain(extract_domain(url)):
-                    continue
-                
-                # Извлечение заголовка
-                title = link_elem.get_text(strip=True)
-                
-                results.append({
-                    'position': idx,
-                    'domain': extract_domain(url),
-                    'title': title,
-                    'url': url,
-                    'type': 'organic'
-                })
-                
-            except Exception as e:
-                print(f"YandexParser parse error: {e}")
-                continue
-        
-        return results
-    
+
     def find_competitors(self, queries, positions=5):
         """
         Поиск конкурентов по списку запросов.
@@ -586,11 +379,3 @@ class YandexParser:
         
         print(f"YandexParser: Найдено {len(competitors)} уникальных конкурентов")
         return list(competitors.values())
-    
-    def __del__(self):
-        """Закрытие WebDriver при уничтожении объекта."""
-        if self.driver:
-            try:
-                self.driver.quit()
-            except Exception:
-                pass
