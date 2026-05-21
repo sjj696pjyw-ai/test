@@ -3,7 +3,8 @@ import { useState, useMemo } from 'react'
 
 export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onFilterChange, userProducts }) {
   const [activeDot, setActiveDot] = useState(null)
-  
+  const [filterProduct, setFilterProduct] = useState(selectedUserProductId || null)
+
   if (!data || data.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500 dark:text-gray-400">
@@ -11,19 +12,40 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
       </div>
     )
   }
-  
+
+  // Get unique user products from data for the filter
+  const availableUserProducts = useMemo(() => {
+    const products = new Map()
+    data.forEach(series => {
+      if (series.user_product_id && series.product_name) {
+        products.set(series.user_product_id, {
+          id: series.user_product_id,
+          name: series.product_name
+        })
+      }
+    })
+    return Array.from(products.values())
+  }, [data])
+
   // Filter data based on selected user product
   const filteredData = useMemo(() => {
-    if (!selectedUserProductId) {
+    if (!filterProduct) {
       return data
     }
     return data.filter(series => {
-      // We need to find the user product ID from the series
-      // The backend should include user_product_id in the response
-      return series.user_product_id === selectedUserProductId
+      return series.user_product_id === filterProduct
     })
-  }, [data, selectedUserProductId])
-  
+  }, [data, filterProduct])
+
+  // Handle filter change
+  const handleFilterChange = (productId) => {
+    const newFilter = productId === 'all' ? null : productId
+    setFilterProduct(newFilter)
+    if (onFilterChange) {
+      onFilterChange(newFilter)
+    }
+  }
+
   // Transform data for Recharts format
   const productLegends = []
   const seenProducts = new Set()
@@ -33,7 +55,7 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
   filteredData.forEach((series, index) => {
     const userColor = '#22c55e' // green-500
     const competitorColor = '#3b82f6' // blue-500
-    
+
     // Add user product only once (avoid duplicates by name only)
     const userKey = `user_${series.product_name}`
     if (!seenProducts.has(userKey)) {
@@ -46,7 +68,7 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
         dataKey: `user_${index}`
       })
     }
-    
+
     // Add competitor product (unique by name + domain combination)
     const competitorKey = `competitor_${series.competitor_name}_${series.competitor_domain}`
     if (!seenProducts.has(competitorKey)) {
@@ -70,28 +92,28 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const todayStr = today.toISOString().split('T')[0]
-    
+
     // Create 7-day range: 3 days before, today, 3 days after
     const startDate = new Date(today)
     startDate.setDate(startDate.getDate() - 3)
-    
+
     const endDate = new Date(today)
     endDate.setDate(endDate.getDate() + 3)
-    
+
     const dateRangeArray = []
     const currentDate = new Date(startDate)
-    
+
     while (currentDate <= endDate) {
       const dateStr = currentDate.toISOString().split('T')[0]
       dateRangeArray.push(dateStr)
       currentDate.setDate(currentDate.getDate() + 1)
     }
-    
+
     // Build chart data points
     const result = []
     dateRangeArray.forEach(date => {
       const point = { date }
-      
+
       filteredData.forEach((series, index) => {
         const seriesPoint = series.data_points.find(p => p.date === date)
         if (seriesPoint) {
@@ -103,10 +125,10 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
           }
         }
       })
-      
+
       result.push(point)
     })
-    
+
     return result
   }, [filteredData])
 
@@ -121,7 +143,7 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
       }
     })
   })
-  
+
   // Add padding to the domain (10% of range)
   const priceRange = maxPrice - minPrice
   const padding = priceRange * 0.1 || 1000 // fallback if all prices are the same
@@ -140,7 +162,7 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
     if (active && payload && payload.length && activeDot) {
       // Filter payload to show only the hovered item
       const hoveredPayload = payload.find(p => p.dataKey === activeDot.dataKey && p.value === activeDot.value)
-      
+
       if (hoveredPayload) {
         return (
           <div className="bg-white dark:bg-gray-800 p-3 border border-gray-200 dark:border-gray-700 rounded shadow-lg">
@@ -163,30 +185,17 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
     return (
       <div className="flex flex-wrap justify-center gap-4 mt-4">
         {productLegends.map((legend, idx) => (
-          <div 
-            key={idx} 
-            className={`flex items-center gap-2 transition-opacity ${legend.url ? 'cursor-pointer hover:opacity-75' : ''}`}
-            title={legend.url ? 'Перейти к товару' : ''}
+          <div
+            key={idx}
+            className="flex items-center gap-2 transition-opacity"
           >
-            <div 
-              className="w-3 h-3 rounded-full" 
+            <div
+              className="w-3 h-3 rounded-full"
               style={{ backgroundColor: legend.color }}
             ></div>
-            {legend.url ? (
-              <a 
-                href={legend.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-gray-700 dark:text-gray-300 max-w-xs truncate hover:underline"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {legend.name}
-              </a>
-            ) : (
-              <span className="text-sm text-gray-700 dark:text-gray-300 max-w-xs truncate">
-                {legend.name}
-              </span>
-            )}
+            <span className="text-sm text-gray-700 dark:text-gray-300 max-w-xs truncate">
+              {legend.name}
+            </span>
           </div>
         ))}
       </div>
@@ -196,7 +205,7 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
   // Custom dot component
   const CustomDot = (props) => {
     const { cx, cy, fill, stroke, value, dataKey, index, payload } = props
-    
+
     if (value === null || value === undefined || !cx || !cy) {
       return null
     }
@@ -215,8 +224,8 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
       }
     }
 
-    const isHovered = activeDot && 
-                      activeDot.dataKey === dataKey && 
+    const isHovered = activeDot &&
+                      activeDot.dataKey === dataKey &&
                       activeDot.index === index
 
     return (
@@ -256,7 +265,7 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
   filteredData.forEach((series, index) => {
     const userColor = '#22c55e'
     const competitorColor = '#3b82f6'
-    
+
     lines.push(
       <Line
         key={`user_${index}`}
@@ -270,7 +279,7 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
         connectNulls={false}
       />
     )
-    
+
     lines.push(
       <Line
         key={`competitor_${index}`}
@@ -288,12 +297,33 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
 
   return (
     <div className="space-y-4">
+      {/* Filter section */}
+      {availableUserProducts.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Фильтр по товарам:
+          </label>
+          <select
+            value={filterProduct || 'all'}
+            onChange={(e) => handleFilterChange(e.target.value === 'all' ? null : Number(e.target.value))}
+            className="text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          >
+            <option value="all">Все товары</option>
+            {availableUserProducts.map(product => (
+              <option key={product.id} value={product.id}>
+                {product.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      
       <div className="h-[500px] pt-8 overflow-visible flex justify-center">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData} margin={{ top: 20, right: 30, left: 100, bottom: 40 }}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-            <XAxis 
-              dataKey="date" 
+            <XAxis
+              dataKey="date"
               tickFormatter={formatDate}
               className="text-xs text-gray-500 dark:text-gray-400"
               interval={0}
@@ -306,7 +336,7 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
               padding={{ left: 0, right: 0 }}
               allowDataOverflow={false}
             />
-            <YAxis 
+            <YAxis
               className="text-xs text-gray-500 dark:text-gray-400"
               tickFormatter={(value) => `${Math.round(value)} ₽`}
               domain={yAxisDomain}
