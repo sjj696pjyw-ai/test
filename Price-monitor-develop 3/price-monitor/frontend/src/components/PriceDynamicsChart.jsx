@@ -1,7 +1,7 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { useState, useMemo } from 'react'
 
-export function PriceDynamicsChart({ data, dateRange }) {
+export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onFilterChange, userProducts }) {
   const [activeDot, setActiveDot] = useState(null)
   
   if (!data || data.length === 0) {
@@ -12,13 +12,25 @@ export function PriceDynamicsChart({ data, dateRange }) {
     )
   }
   
+  // Filter data based on selected user product
+  const filteredData = useMemo(() => {
+    if (!selectedUserProductId) {
+      return data
+    }
+    return data.filter(series => {
+      // We need to find the user product ID from the series
+      // The backend should include user_product_id in the response
+      return series.user_product_id === selectedUserProductId
+    })
+  }, [data, selectedUserProductId])
+  
   // Transform data for Recharts format
   const productLegends = []
   const seenProducts = new Set()
   const allDates = new Set()
 
   // Collect all unique dates and build series
-  data.forEach((series, index) => {
+  filteredData.forEach((series, index) => {
     const userColor = '#22c55e' // green-500
     const competitorColor = '#3b82f6' // blue-500
     
@@ -27,7 +39,7 @@ export function PriceDynamicsChart({ data, dateRange }) {
     if (!seenProducts.has(userKey)) {
       seenProducts.add(userKey)
       productLegends.push({
-        name: `Мой: ${series.product_name}`,
+        name: `${series.product_name}`,
         type: 'user',
         color: userColor,
         url: series.product_url,
@@ -80,7 +92,7 @@ export function PriceDynamicsChart({ data, dateRange }) {
     dateRangeArray.forEach(date => {
       const point = { date }
       
-      data.forEach((series, index) => {
+      filteredData.forEach((series, index) => {
         const seriesPoint = series.data_points.find(p => p.date === date)
         if (seriesPoint) {
           if (seriesPoint.user_price !== null && seriesPoint.user_price !== undefined) {
@@ -96,7 +108,7 @@ export function PriceDynamicsChart({ data, dateRange }) {
     })
     
     return result
-  }, [data])
+  }, [filteredData])
 
   // Calculate min and max prices for dynamic Y-axis domain
   let minPrice = Infinity
@@ -189,17 +201,17 @@ export function PriceDynamicsChart({ data, dateRange }) {
       return null
     }
 
-    // Find the product name for this dot
+    // Find the product name for this dot - use filteredData instead of data
     let productName = ''
     let productUrl = ''
     const seriesIndex = parseInt(dataKey.split('_')[1])
-    if (data && data[seriesIndex]) {
+    if (filteredData && filteredData[seriesIndex]) {
       if (dataKey.startsWith('user_')) {
-        productName = `Мой: ${data[seriesIndex].product_name}`
-        productUrl = data[seriesIndex].product_url || ''
+        productName = `${filteredData[seriesIndex].product_name}`
+        productUrl = filteredData[seriesIndex].product_url || ''
       } else {
-        productName = `${data[seriesIndex].competitor_name} (${data[seriesIndex].competitor_domain})`
-        productUrl = data[seriesIndex].product_url || ''
+        productName = `${filteredData[seriesIndex].competitor_name} (${filteredData[seriesIndex].competitor_domain})`
+        productUrl = filteredData[seriesIndex].product_url || ''
       }
     }
 
@@ -241,7 +253,7 @@ export function PriceDynamicsChart({ data, dateRange }) {
 
   // Build line elements dynamically
   const lines = []
-  data.forEach((series, index) => {
+  filteredData.forEach((series, index) => {
     const userColor = '#22c55e'
     const competitorColor = '#3b82f6'
     
@@ -254,7 +266,7 @@ export function PriceDynamicsChart({ data, dateRange }) {
         strokeWidth={2}
         dot={(props) => <CustomDot {...props} />}
         activeDot={false}
-        name={`Мой: ${series.product_name}`}
+        name={`${series.product_name}`}
         connectNulls={false}
       />
     )
@@ -276,7 +288,7 @@ export function PriceDynamicsChart({ data, dateRange }) {
 
   return (
     <div className="space-y-4">
-      <div className="h-[500px] pt-8 overflow-visible">
+      <div className="h-[500px] pt-8 overflow-visible flex justify-center">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData} margin={{ top: 20, right: 30, left: 100, bottom: 40 }}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
@@ -307,9 +319,6 @@ export function PriceDynamicsChart({ data, dateRange }) {
           </LineChart>
         </ResponsiveContainer>
       </div>
-      <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-        Нажмите на название товара в легенде или точку на графике для перехода на сайт
-      </p>
     </div>
   )
 }
