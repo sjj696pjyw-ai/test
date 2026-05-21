@@ -12,25 +12,13 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
     )
   }
   
-  // Filter data based on selected user product
-  const filteredData = useMemo(() => {
-    if (!selectedUserProductId) {
-      return data
-    }
-    return data.filter(series => {
-      // We need to find the user product ID from the series
-      // The backend should include user_product_id in the response
-      return series.user_product_id === selectedUserProductId
-    })
-  }, [data, selectedUserProductId])
-  
   // Transform data for Recharts format
   const productLegends = []
   const seenProducts = new Set()
   const allDates = new Set()
 
   // Collect all unique dates and build series
-  filteredData.forEach((series, index) => {
+  data.forEach((series, index) => {
     const userColor = '#22c55e' // green-500
     const competitorColor = '#3b82f6' // blue-500
     
@@ -42,7 +30,6 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
         name: `${series.product_name}`,
         type: 'user',
         color: userColor,
-        url: series.product_url,
         dataKey: `user_${index}`
       })
     }
@@ -55,7 +42,6 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
         name: `${series.competitor_name} (${series.competitor_domain})`,
         type: 'competitor',
         color: competitorColor,
-        url: series.product_url,
         dataKey: `competitor_${index}`
       })
     }
@@ -92,7 +78,7 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
     dateRangeArray.forEach(date => {
       const point = { date }
       
-      filteredData.forEach((series, index) => {
+      data.forEach((series, index) => {
         const seriesPoint = series.data_points.find(p => p.date === date)
         if (seriesPoint) {
           if (seriesPoint.user_price !== null && seriesPoint.user_price !== undefined) {
@@ -108,7 +94,7 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
     })
     
     return result
-  }, [filteredData])
+  }, [data])
 
   // Calculate min and max prices for dynamic Y-axis domain
   let minPrice = Infinity
@@ -165,28 +151,15 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
         {productLegends.map((legend, idx) => (
           <div 
             key={idx} 
-            className={`flex items-center gap-2 transition-opacity ${legend.url ? 'cursor-pointer hover:opacity-75' : ''}`}
-            title={legend.url ? 'Перейти к товару' : ''}
+            className="flex items-center gap-2"
           >
             <div 
               className="w-3 h-3 rounded-full" 
               style={{ backgroundColor: legend.color }}
             ></div>
-            {legend.url ? (
-              <a 
-                href={legend.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-gray-700 dark:text-gray-300 max-w-xs truncate hover:underline"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {legend.name}
-              </a>
-            ) : (
-              <span className="text-sm text-gray-700 dark:text-gray-300 max-w-xs truncate">
-                {legend.name}
-              </span>
-            )}
+            <span className="text-sm text-gray-700 dark:text-gray-300 max-w-xs truncate">
+              {legend.name}
+            </span>
           </div>
         ))}
       </div>
@@ -201,17 +174,17 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
       return null
     }
 
-    // Find the product name for this dot - use filteredData instead of data
+    // Find the product name for this dot - use data instead of filteredData
     let productName = ''
     let productUrl = ''
     const seriesIndex = parseInt(dataKey.split('_')[1])
-    if (filteredData && filteredData[seriesIndex]) {
+    if (data && data[seriesIndex]) {
       if (dataKey.startsWith('user_')) {
-        productName = `${filteredData[seriesIndex].product_name}`
-        productUrl = filteredData[seriesIndex].product_url || ''
+        productName = `${data[seriesIndex].product_name}`
+        productUrl = data[seriesIndex].product_url || ''
       } else {
-        productName = `${filteredData[seriesIndex].competitor_name} (${filteredData[seriesIndex].competitor_domain})`
-        productUrl = filteredData[seriesIndex].product_url || ''
+        productName = `${data[seriesIndex].competitor_name} (${data[seriesIndex].competitor_domain})`
+        productUrl = data[seriesIndex].product_url || ''
       }
     }
 
@@ -253,7 +226,7 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
 
   // Build line elements dynamically
   const lines = []
-  filteredData.forEach((series, index) => {
+  data.forEach((series, index) => {
     const userColor = '#22c55e'
     const competitorColor = '#3b82f6'
     

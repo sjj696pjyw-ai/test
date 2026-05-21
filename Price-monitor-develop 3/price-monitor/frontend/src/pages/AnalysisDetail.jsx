@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, Link, useLocation } from 'react-router-dom'
 import api from '../utils/api'
 import { ArrowLeft, Download, Table, Link as LinkIcon, X, Check, Settings, Trash2, Edit3, Save, XCircle, RefreshCw, ExternalLink } from 'lucide-react'
@@ -151,8 +151,25 @@ export default function AnalysisDetail() {
   const [editingDomain, setEditingDomain] = useState('')
   const [editingTitleSelector, setEditingTitleSelector] = useState('')
   const [editingPriceSelector, setEditingPriceSelector] = useState('')
+  const [selectedUserProductId, setSelectedUserProductId] = useState(null)
   const { error: showError, success } = useToast()
   const isDemo = location.state?.demo === true
+
+  // Get user products for the filter dropdown
+  const userProducts = useMemo(() => {
+    if (!userCompetitor?.products) return []
+    return userCompetitor.products.map(p => ({
+      id: p.id,
+      name: p.name
+    }))
+  }, [userCompetitor])
+
+  // Filter price dynamics data based on selected user product
+  const filteredPriceDynamicsData = useMemo(() => {
+    if (!priceDynamicsData) return null
+    if (!selectedUserProductId) return priceDynamicsData
+    return priceDynamicsData.filter(series => series.user_product_id === selectedUserProductId)
+  }, [priceDynamicsData, selectedUserProductId])
 
   useEffect(() => {
     fetchAnalysis()
@@ -583,10 +600,28 @@ export default function AnalysisDetail() {
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                     График динамики цен
                   </h3>
+                  {userProducts.length > 0 && (
+                    <div className="relative">
+                      <select
+                        value={selectedUserProductId || ''}
+                        onChange={(e) => setSelectedUserProductId(e.target.value ? parseInt(e.target.value) : null)}
+                        className="input-field text-sm py-2 pr-8 pl-3 h-10 min-w-[200px] cursor-pointer"
+                      >
+                        <option value="">Все товары</option>
+                        {userProducts.map(product => (
+                          <option key={product.id} value={product.id}>
+                            {product.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
-                {priceDynamicsData && priceDynamicsData.length > 0 ? (
+                {filteredPriceDynamicsData && filteredPriceDynamicsData.length > 0 ? (
                   <PriceDynamicsChart 
-                    data={priceDynamicsData} 
+                    data={filteredPriceDynamicsData}
+                    selectedUserProductId={selectedUserProductId}
+                    userProducts={userProducts} 
                     dateRange={{
                       start: analysis.created_at,
                       end: new Date().toISOString()
