@@ -296,6 +296,7 @@ class PriceUpdateService:
             series_data = {
                 'product_name': user_product.name,
                 'user_site': True,  # Mark as user's product (green)
+                'user_product_id': user_product.id,  # Add user product ID for filtering
                 'competitor_name': competitor_product.name,
                 'competitor_domain': competitor_product.competitor.domain,
                 'product_url': competitor_product.url,
