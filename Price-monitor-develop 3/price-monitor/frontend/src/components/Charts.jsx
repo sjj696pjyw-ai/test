@@ -159,6 +159,7 @@ export function AnalysisHistoryChart({ analyses }) {
 
   const options = {
     responsive: true,
+    maintainAspectRatio: false,
     plugins: {
       legend: { display: false },
       title: { display: true, text: 'История анализов (7 дней)' }
@@ -168,5 +169,5 @@ export function AnalysisHistoryChart({ analyses }) {
     }
   }
 
-  return <Line data={chartData} options={options} />
+  return <div className="h-full"><Line data={chartData} options={options} /></div>
 }

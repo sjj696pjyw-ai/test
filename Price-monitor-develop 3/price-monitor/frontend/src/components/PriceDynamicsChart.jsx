@@ -299,7 +299,7 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
     <div className="space-y-4">
       {/* Filter section */}
       {availableUserProducts.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
             Фильтр по товарам:
           </label>
