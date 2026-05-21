@@ -166,12 +166,30 @@ class SearchService:
 
         competitors = []
         
+        # Основной парсер - Yandex (более релевантная выдача для РФ)
+        yandex_success = False
         try:
-            from ..utils import DuckDuckGoParser
-            ddg = DuckDuckGoParser(region=region)
-            competitors = ddg.find_competitors(adapted_queries, positions)
-        except ImportError:
-            pass
+            from ..utils import YandexParser
+            yandex = YandexParser(region=region, delay=3)
+            competitors = yandex.find_competitors(adapted_queries, positions)
+            yandex_success = True
+            print(f"YandexParser: Успешно найдено {len(competitors)} конкурентов")
+        except ImportError as e:
+            print(f"YandexParser не импортирован: {e}")
+        except Exception as e:
+            print(f"YandexParser ошибка: {e}")
+        
+        # Fallback на DuckDuckGo если Yandex не сработал
+        if not yandex_success and not competitors:
+            try:
+                from ..utils import DuckDuckGoParser
+                ddg = DuckDuckGoParser(region=region)
+                competitors = ddg.find_competitors(adapted_queries, positions)
+                print(f"DuckDuckGoParser (fallback): Найдено {len(competitors)} конкурентов")
+            except ImportError as e:
+                print(f"DuckDuckGoParser не импортирован: {e}")
+            except Exception as e:
+                print(f"DuckDuckGoParser ошибка: {e}")
         
         wants_organic = 'organic' in result_types
         wants_ads = 'cpc' in result_types or 'ads' in result_types or 'ad' in result_types
