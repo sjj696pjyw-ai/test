@@ -93,13 +93,12 @@ class CompetitorService:
 
 class ProductService:
     @staticmethod
-    def add_product(competitor_id, name, price, currency='RUB', external_id=None):
+    def add_product(competitor_id, name, price, currency='RUB'):
         product = Product(
             competitor_id=competitor_id,
             name=name,
             price=price,
-            currency=currency,
-            external_id=external_id
+            currency=currency
         )
         db.session.add(product)
         db.session.commit()
@@ -225,8 +224,7 @@ class SiteParsingService:
                 competitor_id=competitor_id,
                 name=prod['name'],
                 price=prod['price'],
-                currency=prod.get('currency', 'RUB'),
-                external_id=prod.get('external_id')
+                currency=prod.get('currency', 'RUB')
             )
             saved_products.append(product)
         

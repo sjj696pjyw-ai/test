@@ -68,7 +68,6 @@ class Competitor(db.Model):
     is_user_site = db.Column(db.Boolean, default=False)
     title_selector = db.Column(db.String(255))
     price_selector = db.Column(db.String(255))
-    sku_selector = db.Column(db.String(255))
     last_price_update = db.Column(db.DateTime)  # Last successful price update timestamp
     update_status = db.Column(db.String(50), default='pending')  # pending, success, partial, error
     update_error_message = db.Column(db.Text)  # Error message if update failed
@@ -84,7 +83,6 @@ class Competitor(db.Model):
             'is_user_site': self.is_user_site,
             'title_selector': self.title_selector,
             'price_selector': self.price_selector,
-            'sku_selector': self.sku_selector,
             'last_price_update': self.last_price_update.isoformat() if self.last_price_update else None,
             'update_status': self.update_status,
             'update_error_message': self.update_error_message
@@ -99,7 +97,6 @@ class Product(db.Model):
     name = db.Column(db.String(500), nullable=False)
     price = db.Column(db.Float)
     currency = db.Column(db.String(10), default='RUB')
-    external_id = db.Column(db.String(255))
     url = db.Column(db.String(1000))  # Product URL for matching
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -109,7 +106,6 @@ class Product(db.Model):
             'name': self.name,
             'price': self.price,
             'currency': self.currency,
-            'external_id': self.external_id,
             'url': self.url
         }
 

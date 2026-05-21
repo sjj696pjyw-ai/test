@@ -114,8 +114,7 @@ class PriceUpdateService:
         products_data = parser.parse_products(
             html, 
             competitor.title_selector, 
-            competitor.price_selector, 
-            competitor.sku_selector
+            competitor.price_selector
         )
         
         print(f"[DEBUG] Parsed {len(products_data)} products")
@@ -176,8 +175,7 @@ class PriceUpdateService:
                     competitor_id=competitor_id,
                     name=product_name,
                     price=prod_data['price'],
-                    currency=prod_data.get('currency', 'RUB'),
-                    external_id=prod_data.get('external_id')
+                    currency=prod_data.get('currency', 'RUB')
                 )
                 db.session.add(product)
                 created_count += 1
