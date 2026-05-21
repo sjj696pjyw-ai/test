@@ -1,7 +1,13 @@
-import requests
-from urllib.parse import urlparse, parse_qs, unquote
+"""Парсер поисковой выдачи Яндекса через Yandex Search API (Cloud API)."""
+import json
+import os
+import base64
 import time
 import random
+import xml.etree.ElementTree as ET
+import requests
+from urllib.parse import urlparse
+
 from .helpers import extract_domain, is_excluded_domain
 
 
@@ -40,24 +46,45 @@ YANDEX_REGION_MAP = {
 }
 
 
+def _get_api_config():
+    """
+    Загружает конфигурацию Yandex Search API из JSON файла.
+    
+    Returns:
+        tuple: (api_key, folder_id) или (None, None) если не настроено
+    """
+    config_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        'config', 'yandex_xml.json'
+    )
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            cfg = json.load(f)
+            if cfg.get('enabled') and cfg.get('key'):
+                return cfg['key'], cfg.get('folder_id', '')
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+    return None, None
+
+
 class YandexParser:
     """
-    Парсер поисковой выдачи Яндекса через Yandex XML API.
+    Парсер поисковой выдачи Яндекса через Yandex Search API (Cloud API).
     
     Особенности:
-    - Официальный API Яндекса (xml.yandex.ru)
+    - Официальный Yandex Search API (searchapi.api.cloud.yandex.net)
     - Не требует Selenium/браузера
     - Стабильная работа без капч и блокировок
     - Гео-таргетинг по регионам РФ
     - Rate limiting для предотвращения блокировок
     
-    Для работы требуется получить бесплатный API ключ:
-    https://yandex.ru/dev/xml/
+    Для работы требуется получить API ключ:
+    https://yandex.cloud/ru/docs/search/api/quickstart
     """
     
-    XML_API_URL = 'https://yandex-search-api.yandex.ru/search/'
+    API_URL = 'https://searchapi.api.cloud.yandex.net/v2/web/search'
     
-    def __init__(self, region='213', delay=1, max_retries=2, api_key=None):
+    def __init__(self, region='213', delay=1, max_retries=2, api_key=None, folder_id=None):
         """
         Инициализация парсера.
         
@@ -65,37 +92,50 @@ class YandexParser:
             region: ID региона РФ (по умолчанию 213 - Москва)
             delay: Базовая задержка между запросами в секундах
             max_retries: Максимальное количество попыток при ошибке
-            api_key: Yandex XML API ключ (если None, используется демо-режим)
+            api_key: Yandex Search API ключ (если None, загружается из конфига)
+            folder_id: Yandex Cloud Folder ID (опционально)
         """
         self.region = YANDEX_REGION_MAP.get(str(region), '213')
         self.delay = delay
         self.max_retries = max_retries
         self.api_key = api_key
+        self.folder_id = folder_id
         self.session = requests.Session()
         self.last_request_time = 0
+        
+        # Если ключ не передан, пробуем загрузить из конфига
+        if not self.api_key:
+            self.api_key, self.folder_id = _get_api_config()
         
         # Настройка заголовков
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (compatible; YandexBot/3.0; +http://yandex.com/bots)',
-            'Accept': 'application/xml, text/xml, */*',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
         })
-        
+    
+    @staticmethod
+    def is_configured():
+        """Проверяет, настроен ли API ключ."""
+        key, _ = _get_api_config()
+        return bool(key)
+    
     def _random_delay(self, min_factor=0.5, max_factor=1.5):
         """Случайная задержка с рандомизацией."""
         delay_range = self.delay * (max_factor - min_factor)
         actual_delay = self.delay * min_factor + random.uniform(0, delay_range)
         time.sleep(actual_delay)
-        
+    
     def _check_rate_limit(self):
         """Проверка rate limiting."""
         current_time = time.time()
         if current_time - self.last_request_time < 1:
             time.sleep(1 - (current_time - self.last_request_time))
         self.last_request_time = time.time()
-        
+    
     def search(self, query, positions=5):
         """
-        Поиск по Яндексу через XML API.
+        Поиск по Яндексу через Search API.
         
         Args:
             query: Поисковый запрос
@@ -104,6 +144,9 @@ class YandexParser:
         Returns:
             dict с ключами 'organic' и 'ads'
         """
+        if not self.api_key:
+            return {'organic': [], 'ads': []}
+        
         all_results = {'organic': [], 'ads': []}
         
         for attempt in range(self.max_retries):
@@ -111,35 +154,53 @@ class YandexParser:
                 self._check_rate_limit()
                 self._random_delay()
                 
-                # Параметры запроса к Yandex XML API
-                params = {
-                    'text': query,
-                    'lr': self.region,
-                    'page': 0,
+                # Формируем тело запроса согласно Yandex Search API
+                body = {
+                    'query': {
+                        'searchType': 'SEARCH_TYPE_RU',
+                        'queryText': query,
+                    },
+                    'responseFormat': 'FORMAT_XML',
                 }
                 
-                # Если есть API ключ, добавляем его
-                if self.api_key:
-                    params['apikey'] = self.api_key
+                # Добавляем folder_id если указан
+                if self.folder_id:
+                    body['folderId'] = self.folder_id
                 
-                response = self.session.get(
-                    self.XML_API_URL,
-                    params=params,
-                    timeout=20
+                response = self.session.post(
+                    self.API_URL,
+                    headers={
+                        'Authorization': f'Api-Key {self.api_key}',
+                        'Content-Type': 'application/json',
+                    },
+                    json=body,
+                    timeout=15,
                 )
                 
                 if response.status_code == 429:
                     print(f"YandexParser: Rate limit (429). Ожидание...")
                     time.sleep(random.uniform(10, 30))
                     continue
-                    
+                
                 if response.status_code != 200:
-                    print(f"YandexParser: Статус {response.status_code}")
+                    print(f"YandexParser: Статус {response.status_code} - {response.text[:200]}")
                     break
                 
-                # Парсинг XML ответа
-                results = self._parse_xml(response.text, positions)
-                if results:
+                # Парсим JSON ответ
+                data = response.json()
+                raw_data = data.get('rawData', '')
+                
+                if not raw_data:
+                    print("YandexParser: Пустой rawData в ответе")
+                    break
+                
+                # Декодируем base64 XML
+                xml_bytes = base64.b64decode(raw_data)
+                xml_text = xml_bytes.decode('utf-8')
+                
+                # Парсим XML
+                results = self._parse_xml(xml_text, positions)
+                if results and (results['organic'] or results['ads']):
                     all_results = results
                     break
                     
@@ -148,86 +209,167 @@ class YandexParser:
                 if attempt < self.max_retries - 1:
                     time.sleep(random.uniform(5, 10))
                 continue
+            except (json.JSONDecodeError, ValueError, KeyError) as e:
+                print(f"YandexParser JSON decode error: {e}")
+                break
             except Exception as e:
                 print(f"YandexParser unexpected error: {e}")
                 break
         
         return all_results
     
-    def _parse_xml(self, xml_content, positions):
+    def _parse_xml(self, xml_text, positions):
         """
-        Парсинг XML ответа от Yandex API.
+        Парсинг XML ответа от Yandex Search API.
+        
+        Формат XML от searchapi.api.cloud.yandex.net:
+        - Корневой элемент: <response>
+        - Группы результатов: <group name="organic|ads">
+        - Документы: <doc> внутри группы
+        - Поля: <field name="url"><value>...</value></field>
         
         Args:
-            xml_content: XML строка
+            xml_text: XML строка (уже декодированная из base64)
             positions: Количество результатов
             
         Returns:
             dict с ключами 'organic' и 'ads'
         """
-        results = {'organic': [], 'ads': []}
+        result = {'organic': [], 'ads': []}
         
         try:
-            from xml.etree import ElementTree as ET
-            root = ET.fromstring(xml_content)
+            root = ET.fromstring(xml_text)
             
-            # Namespace для Yandex XML
-            ns = {'yandex': 'https://yandex.ru/yandex-search'}
+            # Определяем namespace динамически
+            ns = self._get_namespace(root)
             
-            # Поиск органических результатов
-            organic_items = root.findall('.//yandex:doc', ns)
-            
-            for idx, item in enumerate(organic_items[:positions], 1):
-                try:
-                    url_elem = item.find('yandex:url', ns)
-                    title_elem = item.find('yandex:title', ns)
-                    
-                    if url_elem is not None and url_elem.text:
-                        url = url_elem.text
-                        domain = extract_domain(url)
+            # Ищем органические результаты в группе organic
+            organic_group = root.find(f'.//{ns}group[@name="organic"]')
+            if organic_group is not None:
+                for idx, doc in enumerate(organic_group.findall(f'{ns}doc'), 1):
+                    if idx > positions:
+                        break
+                    try:
+                        url = self._get_field_value(doc, 'url')
+                        title = self._get_field_value(doc, 'title')
                         
-                        if domain and not is_excluded_domain(domain):
-                            results['organic'].append({
-                                'position': idx,
-                                'domain': domain,
-                                'title': title_elem.text.strip() if title_elem is not None and title_elem.text else '',
-                                'url': url,
-                                'type': 'organic'
-                            })
-                except Exception as e:
-                    print(f"YandexParser XML organic error: {e}")
-                    continue
+                        if url:
+                            domain = extract_domain(url)
+                            if domain and not is_excluded_domain(domain):
+                                result['organic'].append({
+                                    'position': idx,
+                                    'domain': domain,
+                                    'title': title or '',
+                                    'url': url,
+                                    'type': 'organic',
+                                })
+                    except Exception as e:
+                        print(f"YandexParser organic doc error: {e}")
+                        continue
             
-            # Поиск рекламных результатов (если есть в ответе)
-            ad_items = root.findall('.//yandex:ad', ns)
-            
-            for idx, item in enumerate(ad_items[:positions], 1):
-                try:
-                    url_elem = item.find('yandex:url', ns)
-                    title_elem = item.find('yandex:title', ns)
-                    
-                    if url_elem is not None and url_elem.text:
-                        url = url_elem.text
-                        domain = extract_domain(url)
+            # Ищем рекламные результаты в группе ads
+            ads_group = root.find(f'.//{ns}group[@name="ads"]')
+            if ads_group is not None:
+                for idx, doc in enumerate(ads_group.findall(f'{ns}doc'), 1):
+                    if idx > positions:
+                        break
+                    try:
+                        url = self._get_field_value(doc, 'url')
+                        title = self._get_field_value(doc, 'title')
                         
-                        if domain and not is_excluded_domain(domain):
-                            results['ads'].append({
-                                'position': idx,
-                                'domain': domain,
-                                'title': title_elem.text.strip() if title_elem is not None and title_elem.text else '',
-                                'url': url,
-                                'type': 'ad'
-                            })
-                except Exception as e:
-                    print(f"YandexParser XML ad error: {e}")
-                    continue
-                    
+                        if url:
+                            domain = extract_domain(url)
+                            if domain and not is_excluded_domain(domain):
+                                result['ads'].append({
+                                    'position': idx,
+                                    'domain': domain,
+                                    'title': title or '',
+                                    'url': url,
+                                    'type': 'ad',
+                                })
+                    except Exception as e:
+                        print(f"YandexParser ads doc error: {e}")
+                        continue
+            
+            # Альтернативный формат: ищем <doc> напрямую без групп
+            if not result['organic'] and not result['ads']:
+                for doc in root.findall(f'.//{ns}doc'):
+                    try:
+                        group_elem = doc.find(f'{ns}group')
+                        group_name = group_elem.get('name', 'organic') if group_elem is not None else 'organic'
+                        
+                        url = self._get_field_value(doc, 'url')
+                        title = self._get_field_value(doc, 'title')
+                        
+                        if url:
+                            domain = extract_domain(url)
+                            if domain and not is_excluded_domain(domain):
+                                item_type = 'ad' if group_name == 'ads' else 'organic'
+                                target_list = result[item_type]
+                                
+                                if len(target_list) < positions:
+                                    target_list.append({
+                                        'position': len(target_list) + 1,
+                                        'domain': domain,
+                                        'title': title or '',
+                                        'url': url,
+                                        'type': item_type,
+                                    })
+                    except Exception as e:
+                        continue
+        
         except ET.ParseError as e:
             print(f"YandexParser XML parse error: {e}")
-            # Fallback: пробуем парсить как HTML если XML не распарсился
-            results = self._parse_html_fallback(xml_content, positions)
+            print(f"XML content preview: {xml_text[:500]}")
         
-        return results
+        return result
+    
+    @staticmethod
+    def _get_namespace(root):
+        """
+        Извлекает namespace из корневого элемента.
+        
+        Args:
+            root: Корневой ElementTree элемент
+            
+        Returns:
+            Строка namespace в формате '{http://...}' или пустая строка
+        """
+        tag = root.tag
+        ns_end = tag.find('}')
+        if ns_end != -1:
+            return tag[:ns_end + 1]
+        return ''
+    
+    @staticmethod
+    def _get_field_value(elem, field_name):
+        """
+        Извлекает значение поля из XML элемента.
+        
+        Формат: <field name="url"><value>https://example.com</value></field>
+        
+        Args:
+            elem: Родительский элемент
+            field_name: Имя поля для поиска
+            
+        Returns:
+            Значение поля или None
+        """
+        ns = YandexParser._get_namespace(elem)
+        
+        # Ищем поле по имени атрибута name
+        for field in elem.findall(f'{ns}field'):
+            if field.get('name') == field_name:
+                value_elem = field.find(f'{ns}value')
+                if value_elem is not None and value_elem.text:
+                    return value_elem.text.strip()
+        
+        # Альтернативно: ищем элемент с именем поля напрямую
+        direct_elem = elem.find(f'{ns}{field_name}')
+        if direct_elem is not None and direct_elem.text:
+            return direct_elem.text.strip()
+        
+        return None
     
     def _parse_html_fallback(self, html, positions):
         """
