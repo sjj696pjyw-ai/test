@@ -164,44 +164,44 @@ export default function Dashboard() {
         )}
       </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-              <div className="card flex items-center space-x-4">
-                <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900 rounded-lg flex items-center justify-center">
-                  <BarChart3 className="h-6 w-6 text-primary-600 dark:text-primary-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.total}</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Всего анализов</p>
-                </div>
-              </div>
-              <div className="card flex items-center space-x-4">
-                <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
-                  <Search className="h-6 w-6 text-green-600 dark:text-green-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.autoCount}</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Автоматических</p>
-                </div>
-              </div>
-              <div className="card flex items-center space-x-4">
-                <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
-                  <Edit3 className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.manualCount}</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Ручных</p>
-                </div>
-              </div>
-              <div className="card flex items-center space-x-4">
-                <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900 rounded-lg flex items-center justify-center">
-                  <Users className="h-6 w-6 text-orange-600 dark:text-orange-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.totalCompetitors}</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Конкурентов</p>
-                </div>
-              </div>
-            </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="card flex items-center space-x-4">
+          <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900 rounded-lg flex items-center justify-center">
+            <BarChart3 className="h-6 w-6 text-primary-600 dark:text-primary-400" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.total}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Всего анализов</p>
+          </div>
+        </div>
+        <div className="card flex items-center space-x-4">
+          <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
+            <Search className="h-6 w-6 text-green-600 dark:text-green-400" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.autoCount}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Автоматических</p>
+          </div>
+        </div>
+        <div className="card flex items-center space-x-4">
+          <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
+            <Edit3 className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.manualCount}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Ручных</p>
+          </div>
+        </div>
+        <div className="card flex items-center space-x-4">
+          <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900 rounded-lg flex items-center justify-center">
+            <Users className="h-6 w-6 text-orange-600 dark:text-orange-400" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.totalCompetitors}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Конкурентов</p>
+          </div>
+        </div>
+      </div>
 
       {analyses.length > 0 && (
         <div className="flex justify-center mb-8">
@@ -232,14 +232,14 @@ export default function Dashboard() {
             </h2>
             <div className="flex items-center space-x-3">
               <div className="relative w-96">
-                  <input
-                    type="text"
-                    placeholder="     Мои анализы"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="input-field pl-10 pr-4 py-2 text-sm w-full"
-                  />
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="     Название анализа"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="input-field pl-10 pr-4 py-2 text-sm w-full"
+                />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
               </div>
               <select
                 value={filterType}
@@ -252,7 +252,7 @@ export default function Dashboard() {
               </select>
             </div>
           </div>
-          
+
           {paginatedAnalyses.length === 0 ? (
             <div className="card text-center py-8">
               <Filter className="h-12 w-12 text-gray-400 mx-auto mb-4" />
@@ -314,7 +314,7 @@ export default function Dashboard() {
               </div>
             ))
           )}
-          
+
           {totalPages > 1 && (
             <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
               <p className="text-sm text-gray-500">
@@ -334,9 +334,8 @@ export default function Dashboard() {
                     <button
                       key={pageNum}
                       onClick={() => setCurrentPage(pageNum)}
-                      className={`w-8 h-8 rounded-lg text-sm font-medium ${
-                        currentPage === pageNum ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-                      }`}
+                      className={`w-8 h-8 rounded-lg text-sm font-medium ${currentPage === pageNum ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                        }`}
                     >
                       {pageNum}
                     </button>
@@ -403,8 +402,8 @@ function NewAnalysisModal({ onClose, onSuccess }) {
       setCheckingSite(null)
     }
   }
-  
-    const regions = REGIONS
+
+  const regions = REGIONS
 
   // City prefixes for domain adaptation (city name in translit)
   const cityPrefixes = {
@@ -461,12 +460,12 @@ function NewAnalysisModal({ onClose, onSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
-    
+
     // Проверяем, не являются ли введенные сайты исключенными
     const sitesToCheck = []
     if (userSite) sitesToCheck.push(userSite)
     competitors.forEach(c => { if (c.trim()) sitesToCheck.push(c.trim()) })
-    
+
     for (const site of sitesToCheck) {
       try {
         const res = await api.post('/analysis/check-site', { url: site })
@@ -483,7 +482,7 @@ function NewAnalysisModal({ onClose, onSuccess }) {
         // Игнорируем другие ошибки проверки, продолжаем
       }
     }
-    
+
     setLoading(true)
     try {
       const data = {
@@ -550,7 +549,7 @@ function NewAnalysisModal({ onClose, onSuccess }) {
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {error && <div className="p-3 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg">{error}</div>}
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Тип анализа</label>
             <div className="grid grid-cols-2 gap-4">
@@ -654,13 +653,13 @@ function NewAnalysisModal({ onClose, onSuccess }) {
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ваш сайт</label>
                 <div className="flex items-center space-x-2">
-                  <input 
-                    type="text" 
-                    value={userSite} 
-                    onChange={(e) => setUserSite(e.target.value)} 
-                    className="input-field flex-1" 
-                    placeholder="example.ru" 
-                    required 
+                  <input
+                    type="text"
+                    value={userSite}
+                    onChange={(e) => setUserSite(e.target.value)}
+                    className="input-field flex-1"
+                    placeholder="example.ru"
+                    required
                   />
                   <button
                     type="button"
@@ -682,19 +681,19 @@ function NewAnalysisModal({ onClose, onSuccess }) {
                 {competitors.map((comp, index) => (
                   <div key={index} className="flex items-center space-x-2 mb-2">
                     <input type="text" value={comp} onChange={(e) => { const updated = [...competitors]; updated[index] = e.target.value; setCompetitors(updated); }} className="input-field flex-1" placeholder={`Конкурент ${index + 1}`} />
-                  <button
-                    type="button"
-                    onClick={() => checkSite(comp)}
-                    disabled={!comp || checkingSite === comp}
-                    className="btn-secondary whitespace-nowrap"
-                  >
-                    {checkingSite === comp ? 'Проверка...' : 'Проверить'}
-                  </button>
-                  {checkResults[comp] && (
-                    <span className={`text-sm font-medium ${checkResults[comp].available ? 'text-green-600' : 'text-red-600'}`}>
-                      {checkResults[comp].available ? '✅ Доступен' : `❌ ${checkResults[comp].message || 'Нет ответа'}`}
-                    </span>
-                  )}
+                    <button
+                      type="button"
+                      onClick={() => checkSite(comp)}
+                      disabled={!comp || checkingSite === comp}
+                      className="btn-secondary whitespace-nowrap"
+                    >
+                      {checkingSite === comp ? 'Проверка...' : 'Проверить'}
+                    </button>
+                    {checkResults[comp] && (
+                      <span className={`text-sm font-medium ${checkResults[comp].available ? 'text-green-600' : 'text-red-600'}`}>
+                        {checkResults[comp].available ? '✅ Доступен' : `❌ ${checkResults[comp].message || 'Нет ответа'}`}
+                      </span>
+                    )}
                     {competitors.length > 1 && <button type="button" onClick={() => setCompetitors(competitors.filter((_, i) => i !== index))} className="btn-secondary p-2">-</button>}
                   </div>
                 ))}
@@ -732,15 +731,14 @@ function NewAnalysisModal({ onClose, onSuccess }) {
                         <tr
                           key={index}
                           onClick={() => handleCompetitorSelect(comp.domain)}
-                          className={`cursor-pointer transition-colors ${
-                            isSelected ? 'bg-primary-50 dark:bg-primary-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
-                          }`}
+                          className={`cursor-pointer transition-colors ${isSelected ? 'bg-primary-50 dark:bg-primary-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                            }`}
                         >
                           <td className="py-3 pr-2">
                             <input
                               type="checkbox"
                               checked={isSelected}
-                              onChange={() => {}}
+                              onChange={() => { }}
                               className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                             />
                           </td>

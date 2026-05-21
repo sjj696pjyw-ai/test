@@ -225,8 +225,8 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
     }
 
     const isHovered = activeDot &&
-                      activeDot.dataKey === dataKey &&
-                      activeDot.index === index
+      activeDot.dataKey === dataKey &&
+      activeDot.index === index
 
     return (
       <circle
@@ -299,7 +299,7 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
     <div className="space-y-4">
       {/* Filter section */}
       {availableUserProducts.length > 0 && (
-        <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center justify-end gap-3 flex-wrap">
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
             Фильтр по товарам:
           </label>
@@ -317,10 +317,10 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
           </select>
         </div>
       )}
-      
-      <div className="h-[500px] pt-8 overflow-visible flex justify-center">
+
+      <div className="h-[500px] pt-8 overflow-visible">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ top: 20, right: 30, left: 100, bottom: 40 }}>
+          <LineChart data={chartData} margin={{ top: 0, right: 30, left: 10, bottom: 20 }}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
             <XAxis
               dataKey="date"
