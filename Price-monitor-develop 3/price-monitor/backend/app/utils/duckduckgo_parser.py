@@ -3,17 +3,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import quote, urlparse, parse_qs, unquote
 import time
 import random
-from .helpers import extract_domain, get_default_headers, setup_selenium_options, is_excluded_domain
-
-try:
-    from selenium import webdriver
-    from selenium.webdriver.chrome.service import Service as ChromeService
-    from selenium.webdriver.chrome.options import Options as ChromeOptions
-    from webdriver_manager.chrome import ChromeDriverManager
-    from selenium.webdriver.common.by import By
-    SELENIUM_AVAILABLE = True
-except ImportError:
-    SELENIUM_AVAILABLE = False
+from .helpers import extract_domain, get_default_headers, is_excluded_domain
 
 
 DDG_REGION_MAP = {
@@ -29,110 +19,89 @@ DDG_REGION_MAP = {
 
 
 class DuckDuckGoParser:
+    """
+    Парсер поисковой выдачи DuckDuckGo.
+    
+    Особенности:
+    - Использует HTML версию DuckDuckGo (html.duckduckgo.com)
+    - Не требует Selenium/браузера
+    - Автоматический fallback на Lite версию
+    - Гео-таргетинг по регионам РФ
+    """
     BASE_URL = 'https://html.duckduckgo.com/html/'
-    JS_URL = 'https://duckduckgo.com/'
+    LITE_URL = 'https://lite.duckduckgo.com/lite/'
 
     def __init__(self, region='213', delay=2):
         self.region = DDG_REGION_MAP.get(str(region), 'ru-ru')
         self.delay = delay
         self.session = requests.Session()
         self.session.headers.update(get_default_headers())
-        self.driver = None
 
     def search(self, query, positions=5):
         all_results = {'organic': [], 'ads': []}
 
         try:
             time.sleep(random.uniform(self.delay * 0.5, self.delay * 1.5))
+            
+            # Попытка через HTML версию
             response = self.session.get(
                 self.BASE_URL,
                 params={'q': query, 'kl': self.region},
                 headers={'Referer': 'https://duckduckgo.com/'},
                 timeout=15
             )
+            
             if response.status_code == 200:
                 results = self._parse_page(response.text)
                 if results:
                     all_results['organic'] = results[:positions]
-        except Exception:
-            pass
-
-        if SELENIUM_AVAILABLE:
+                    
+        except Exception as e:
+            print(f"DuckDuckGo HTML error: {e}")
+            # Fallback на Lite версию
             try:
-                selenium_results = self._search_selenium(query, positions)
-                if selenium_results.get('ads'):
-                    all_results['ads'] = selenium_results['ads']
-                if not all_results['organic'] and selenium_results.get('organic'):
-                    all_results['organic'] = selenium_results['organic']
-            except Exception as e:
-                print(f"DuckDuckGo selenium error: {e}")
+                time.sleep(random.uniform(self.delay * 0.5, self.delay * 1.5))
+                response = self.session.get(
+                    self.LITE_URL,
+                    params={'q': query, 'kl': self.region},
+                    timeout=15
+                )
+                
+                if response.status_code == 200:
+                    results = self._parse_lite_page(response.text)
+                    if results:
+                        all_results['organic'] = results[:positions]
+            except Exception as e2:
+                print(f"DuckDuckGo Lite error: {e2}")
 
         return all_results
 
-    def _search_selenium(self, query, positions):
-        results = {'organic': [], 'ads': []}
+    def _parse_lite_page(self, html):
+        """Парсинг Lite версии DuckDuckGo."""
+        soup = BeautifulSoup(html, 'lxml')
+        results = []
 
-        if not self.driver:
-            options = ChromeOptions()
-            setup_selenium_options(options)
-            self.driver = webdriver.Chrome(
-                service=ChromeService(ChromeDriverManager().install()),
-                options=options
-            )
-
-        search_url = f'{self.JS_URL}?q={quote(query)}&ia=web'
-        self.driver.get(search_url)
-        time.sleep(random.uniform(2, 4))
-
-        articles = self.driver.find_elements(By.CSS_SELECTOR, 'article[data-testid="result"]')
-        for idx, article in enumerate(articles[:positions], 1):
+        # Селекторы для Lite версии
+        items = soup.select('table.result-table td.result-body')
+        
+        for idx, item in enumerate(items, 1):
             try:
-                a = article.find_element(By.CSS_SELECTOR, 'a[data-testid="result-title-a"], a[href]')
-                href = a.get_attribute('href')
-                title = a.text.strip()
-                url = self._extract_ddg_url(href)
-                results['organic'].append({
-                    'position': idx,
-                    'domain': extract_domain(url),
-                    'title': title or '',
-                    'url': url,
-                    'type': 'organic',
-                })
+                link_elem = item.select_one('a.result-link')
+                if link_elem:
+                    href = link_elem.get('href', '')
+                    url = self._extract_ddg_url(href)
+                    title = link_elem.get_text(strip=True)
+                    
+                    if url and not is_excluded_domain(extract_domain(url)):
+                        results.append({
+                            'position': idx,
+                            'domain': extract_domain(url),
+                            'title': title,
+                            'url': url,
+                            'type': 'organic'
+                        })
             except Exception:
                 continue
-
-        try:
-            ad_links = self.driver.find_elements(By.CSS_SELECTOR,
-                '[data-testid="result"][data-ad="true"] a[href], '
-                'article a[data-testid="result-title-a"][href], '
-                '.results--ads a[href], '
-                'a[href*="//duckduckgo.com/y.js"] '
-            )
-            seen_urls = set()
-            for link in ad_links[:positions]:
-                try:
-                    href = link.get_attribute('href')
-                    url = self._extract_ddg_url(href)
-                    if url and url not in seen_urls and 'duckduckgo.com' not in url:
-                        seen_urls.add(url)
-                        is_ad = False
-                        try:
-                            parent = link.find_element(By.XPATH, '..')
-                            parent.find_element(By.CSS_SELECTOR, '[class*="badge"], [class*="ad"], [class*="sponsored"]')
-                            is_ad = True
-                        except:
-                            pass
-                        results['ads'].append({
-                            'position': len(results['ads']) + 1,
-                            'domain': extract_domain(url),
-                            'title': link.text.strip() or '',
-                            'url': url,
-                            'type': 'ad' if is_ad else 'organic',
-                        })
-                except Exception:
-                    continue
-        except Exception:
-            pass
 
         return results
 
@@ -212,10 +181,3 @@ class DuckDuckGoParser:
                     competitors[domain]['types'].append('ad')
 
         return list(competitors.values())
-
-    def __del__(self):
-        if self.driver:
-            try:
-                self.driver.quit()
-            except Exception:
-                pass
