@@ -12,17 +12,6 @@ const ITEMS_PER_PAGE = 10
 
 const DEMO_ANALYSES = [
   {
-    id: 1,
-    analysis_type: 'auto',
-    competitors_count: 8,
-    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    region: 'Москва',
-    queries: ['iPhone 15 Pro', 'Samsung Galaxy S24'],
-    avg_price: 85420,
-    lowest_price: 78990,
-    highest_price: 99990
-  },
-  {
     id: 2,
     analysis_type: 'manual',
     competitors_count: 5,
@@ -32,17 +21,6 @@ const DEMO_ANALYSES = [
     avg_price: 125000,
     lowest_price: 119990,
     highest_price: 135000
-  },
-  {
-    id: 3,
-    analysis_type: 'auto',
-    competitors_count: 12,
-    created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-    region: 'Москва',
-    queries: ['Sony PlayStation 5'],
-    avg_price: 49990,
-    lowest_price: 45990,
-    highest_price: 54990
   }
 ]
 
@@ -111,7 +89,6 @@ export default function Dashboard() {
 
   const stats = {
     total: analyses.length,
-    autoCount: analyses.filter(a => a.analysis_type === 'auto').length,
     manualCount: analyses.filter(a => a.analysis_type === 'manual').length,
     totalCompetitors: analyses.reduce((acc, a) => acc + (a.competitors_count || 0), 0)
   }
@@ -164,7 +141,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
         <div className="card flex items-center space-x-4">
           <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900 rounded-lg flex items-center justify-center">
             <BarChart3 className="h-6 w-6 text-primary-600 dark:text-primary-400" />
@@ -172,15 +149,6 @@ export default function Dashboard() {
           <div>
             <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.total}</p>
             <p className="text-sm text-gray-500 dark:text-gray-400">Всего анализов</p>
-          </div>
-        </div>
-        <div className="card flex items-center space-x-4">
-          <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
-            <Search className="h-6 w-6 text-green-600 dark:text-green-400" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.autoCount}</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Автоматических</p>
           </div>
         </div>
         <div className="card flex items-center space-x-4">
@@ -247,7 +215,6 @@ export default function Dashboard() {
                 className="input-field py-1.5 text-sm"
               >
                 <option value="all">Все типы</option>
-                <option value="auto">Автоматические</option>
                 <option value="manual">Ручные</option>
               </select>
             </div>
@@ -264,7 +231,7 @@ export default function Dashboard() {
                 <div className="flex-1">
                   <div className="flex items-center space-x-3 mb-2">
                     <span className="px-2 py-1 text-xs font-medium rounded-full bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300">
-                      {analysis.analysis_type === 'auto' ? 'Автоматический' : 'Ручной'}
+                      Ручной
                     </span>
                     <span className="text-sm text-gray-500 dark:text-gray-400">{analysis.competitors_count} конкурентов</span>
                   </div>
@@ -364,7 +331,7 @@ export default function Dashboard() {
 }
 
 function NewAnalysisModal({ onClose, onSuccess }) {
-  const [analysisType, setAnalysisType] = useState('auto')
+  const [analysisType, setAnalysisType] = useState('manual')
   const [region, setRegion] = useState('213')
   const [regionSearch, setRegionSearch] = useState('')
   const [analysisName, setAnalysisName] = useState('')
@@ -495,12 +462,8 @@ function NewAnalysisModal({ onClose, onSuccess }) {
       if (analysisName && analysisName.trim()) {
         data.name = analysisName.trim()
       }
-      if (analysisType === 'manual') {
-        data.user_site = userSite
-        data.competitors = competitors.filter(c => c.trim()).map(domain => ({ domain: domain.trim() }))
-      } else {
-        data.user_site = userSite
-      }
+      data.user_site = userSite
+      data.competitors = competitors.filter(c => c.trim()).map(domain => ({ domain: domain.trim() }))
       const response = await api.post('/analysis', data)
       if (response.data.require_selection) {
         setAnalysisId(response.data.analysis_id)
@@ -552,12 +515,7 @@ function NewAnalysisModal({ onClose, onSuccess }) {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Тип анализа</label>
-            <div className="grid grid-cols-2 gap-4">
-              <button type="button" onClick={() => setAnalysisType('auto')} className={`p-4 border-2 rounded-lg text-left transition-colors ${analysisType === 'auto' ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30' : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'}`}>
-                <Search className={`h-6 w-6 mb-2 ${analysisType === 'auto' ? 'text-primary-600 dark:text-primary-400' : 'text-primary-600'}`} />
-                <h4 className={`font-semibold ${analysisType === 'auto' ? 'text-primary-800 dark:text-primary-200' : ''}`}>Автоматический</h4>
-                <p className={`text-sm ${analysisType === 'auto' ? 'text-primary-700 dark:text-primary-300' : 'text-gray-600 dark:text-gray-300'}`}>Поиск конкурентов</p>
-              </button>
+            <div className="grid grid-cols-1 gap-4">
               <button type="button" onClick={() => setAnalysisType('manual')} className={`p-4 border-2 rounded-lg text-left transition-colors ${analysisType === 'manual' ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30' : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'}`}>
                 <Edit3 className={`h-6 w-6 mb-2 ${analysisType === 'manual' ? 'text-primary-600 dark:text-primary-400' : 'text-primary-600'}`} />
                 <h4 className={`font-semibold ${analysisType === 'manual' ? 'text-primary-800 dark:text-primary-200' : ''}`}>Ручной ввод</h4>
@@ -584,123 +542,55 @@ function NewAnalysisModal({ onClose, onSuccess }) {
             />
           </div>
 
-          {analysisType === 'auto' && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ваш сайт</label>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="text"
-                    value={userSite}
-                    onChange={(e) => setUserSite(e.target.value)}
-                    className="input-field flex-1"
-                    placeholder="example.ru"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => checkSite(userSite)}
-                    disabled={!userSite || checkingSite === userSite}
-                    className="btn-secondary whitespace-nowrap"
-                  >
-                    {checkingSite === userSite ? 'Проверка...' : 'Проверить'}
-                  </button>
-                  {checkResults[userSite] && (
-                    <span className={`text-sm font-medium ${checkResults[userSite].available ? 'text-green-600' : 'text-red-600'}`}>
-                      {checkResults[userSite].available ? '✅ Доступен' : `❌ ${checkResults[userSite].message || 'Нет ответа'}`}
-                    </span>
-                  )}
-                </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ваш сайт</label>
+            <div className="flex items-center space-x-2">
+              <input
+                type="text"
+                value={userSite}
+                onChange={(e) => setUserSite(e.target.value)}
+                className="input-field flex-1"
+                placeholder="example.ru"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => checkSite(userSite)}
+                disabled={!userSite || checkingSite === userSite}
+                className="btn-secondary whitespace-nowrap"
+              >
+                {checkingSite === userSite ? 'Проверка...' : 'Проверить'}
+              </button>
+              {checkResults[userSite] && (
+                <span className={`text-sm font-medium ${checkResults[userSite].available ? 'text-green-600' : 'text-red-600'}`}>
+                  {checkResults[userSite].available ? '✅ Доступен' : `❌ ${checkResults[userSite].message || 'Нет ответа'}`}
+                </span>
+              )}
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Конкуренты (до 3)</label>
+            {competitors.map((comp, index) => (
+              <div key={index} className="flex items-center space-x-2 mb-2">
+                <input type="text" value={comp} onChange={(e) => { const updated = [...competitors]; updated[index] = e.target.value; setCompetitors(updated); }} className="input-field flex-1" placeholder={`Конкурент ${index + 1}`} />
+                <button
+                  type="button"
+                  onClick={() => checkSite(comp)}
+                  disabled={!comp || checkingSite === comp}
+                  className="btn-secondary whitespace-nowrap"
+                >
+                  {checkingSite === comp ? 'Проверка...' : 'Проверить'}
+                </button>
+                {checkResults[comp] && (
+                  <span className={`text-sm font-medium ${checkResults[comp].available ? 'text-green-600' : 'text-red-600'}`}>
+                    {checkResults[comp].available ? '✅ Доступен' : `❌ ${checkResults[comp].message || 'Нет ответа'}`}
+                  </span>
+                )}
+                {competitors.length > 1 && <button type="button" onClick={() => setCompetitors(competitors.filter((_, i) => i !== index))} className="btn-secondary p-2">-</button>}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Поисковые запросы</label>
-                <textarea value={queries} onChange={(e) => setQueries(e.target.value)} className="input-field min-h-[100px]" placeholder="iphone 15&#10;samsung galaxy" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Количество позиций (1-10)</label>
-                <input type="number" min="1" max="10" value={positions} onChange={(e) => setPositions(parseInt(e.target.value) || 5)} className="input-field" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Тип выдачи</label>
-                <div className="flex flex-wrap gap-3">
-                  {[
-                    { value: 'organic', label: 'Органическая' },
-                    { value: 'cpc', label: 'Рекламная' },
-                  ].map(type => (
-                    <label key={type.value} className="flex items-center space-x-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={resultTypes.includes(type.value)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setResultTypes([...resultTypes, type.value])
-                          } else {
-                            setResultTypes(resultTypes.filter(t => t !== type.value))
-                          }
-                        }}
-                        className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                      />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">{type.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-
-          {analysisType === 'manual' && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ваш сайт</label>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="text"
-                    value={userSite}
-                    onChange={(e) => setUserSite(e.target.value)}
-                    className="input-field flex-1"
-                    placeholder="example.ru"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => checkSite(userSite)}
-                    disabled={!userSite || checkingSite === userSite}
-                    className="btn-secondary whitespace-nowrap"
-                  >
-                    {checkingSite === userSite ? 'Проверка...' : 'Проверить'}
-                  </button>
-                  {checkResults[userSite] && (
-                    <span className={`text-sm font-medium ${checkResults[userSite].available ? 'text-green-600' : 'text-red-600'}`}>
-                      {checkResults[userSite].available ? '✅ Доступен' : `❌ ${checkResults[userSite].message || 'Нет ответа'}`}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Конкуренты (до 3)</label>
-                {competitors.map((comp, index) => (
-                  <div key={index} className="flex items-center space-x-2 mb-2">
-                    <input type="text" value={comp} onChange={(e) => { const updated = [...competitors]; updated[index] = e.target.value; setCompetitors(updated); }} className="input-field flex-1" placeholder={`Конкурент ${index + 1}`} />
-                    <button
-                      type="button"
-                      onClick={() => checkSite(comp)}
-                      disabled={!comp || checkingSite === comp}
-                      className="btn-secondary whitespace-nowrap"
-                    >
-                      {checkingSite === comp ? 'Проверка...' : 'Проверить'}
-                    </button>
-                    {checkResults[comp] && (
-                      <span className={`text-sm font-medium ${checkResults[comp].available ? 'text-green-600' : 'text-red-600'}`}>
-                        {checkResults[comp].available ? '✅ Доступен' : `❌ ${checkResults[comp].message || 'Нет ответа'}`}
-                      </span>
-                    )}
-                    {competitors.length > 1 && <button type="button" onClick={() => setCompetitors(competitors.filter((_, i) => i !== index))} className="btn-secondary p-2">-</button>}
-                  </div>
-                ))}
-                {competitors.length < 3 && <button type="button" onClick={() => setCompetitors([...competitors, ''])} className="text-sm text-primary-600">+ Добавить</button>}
-              </div>
-            </>
-          )}
+            ))}
+            {competitors.length < 3 && <button type="button" onClick={() => setCompetitors([...competitors, ''])} className="text-sm text-primary-600">+ Добавить</button>}
+          </div>
 
           {showCompetitorSelection ? (
             <div className="space-y-6">
