@@ -32,8 +32,8 @@ export default function Home() {
                 <span className="text-primary-600 dark:text-primary-300"> конкурентов</span> без лишней работы
               </h1>
               <p className="text-lg sm:text-xl text-gray-600 dark:text-primary-100 mb-8 max-w-2xl leading-relaxed">
-                PriceMonitor помогает выявить конкурентов:<br />найдите их автоматически через поиск
-                или добавьте вручную.<br />Сервис соберет актуальные цены и сравнит их с вашими.
+                Добавьте конкурентов вручную — <br />
+                PriceMonitor оперативно соберёт актуальные цены и наглядно сравнит их с вашими.
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
                 {!user && (
@@ -102,8 +102,8 @@ export default function Home() {
             {[
               {
                 icon: Search,
-                title: 'Поиск конкурентов',
-                desc: 'Автоматический поиск в Яндексе или ручной ввод сайтов. Результаты формируются по вашим запросам с учётом выбранного региона.',
+                title: 'Добавление конкурентов',
+                desc: 'Ручной ввод доменов сайтов для анализа. Гибкая настройка парсинга под каждый ресурс обеспечивает точный сбор данных.',
                 color: 'text-blue-600 dark:text-blue-400',
                 bg: 'bg-blue-50 dark:bg-blue-900/20'
               },
