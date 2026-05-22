@@ -6,7 +6,7 @@ import json
 from ..models import db, Competitor
 from ..services import (
     AnalysisService, CompetitorService, ProductService,
-    ProductLinkService, SearchService, SiteParsingService, PriceUpdateService
+    ProductLinkService, SiteParsingService, PriceUpdateService
 )
 from ..utils.domains import is_excluded_domain
 
@@ -24,60 +24,17 @@ def create_analysis():
 
     analysis_type = data.get('type')
     region = data.get('region')
-    name = data.get('name')  # Optional custom name
+    name = data.get('name')
 
     if not analysis_type or not region:
         return jsonify({'error': 'Analysis type and region are required'}), 400
 
-    # Get the next analysis number for this user
     user_analyses = AnalysisService.get_user_analyses(current_user_id)
     user_analyses_count = len(user_analyses) if user_analyses else 0
     default_name = f"Анализ #{user_analyses_count + 1}"
     analysis_name = name if name else default_name
 
-    if analysis_type == 'auto':
-        queries = data.get('queries', [])
-        positions = data.get('positions', 5)
-        result_types = data.get('result_types', ['organic'])
-
-        if not queries:
-            return jsonify({'error': 'Поисковые запросы обязательны для автоматического анализа'}), 400
-
-        user_site = data.get('user_site')
-
-        analysis = AnalysisService.create_analysis(
-            user_id=current_user_id,
-            analysis_type='auto',
-            region=region,
-            queries=queries,
-            user_site=user_site,
-            name=analysis_name
-        )
-
-        if user_site:
-            CompetitorService.add_competitor(
-                analysis_id=analysis.id,
-                domain=user_site,
-                is_user_site=True
-            )
-
-        competitors = SearchService.perform_search(
-            analysis_id=analysis.id,
-            queries=queries,
-            positions=positions,
-            result_types=result_types,
-            region=region
-        )
-
-        return jsonify({
-            'message': 'Поиск завершен, выберите конкурентов',
-            'analysis': analysis.to_dict(),
-            'analysis_id': analysis.id,
-            'found_competitors': competitors,
-            'require_selection': True
-        }), 200
-
-    elif analysis_type == 'manual':
+    if analysis_type == 'manual':
         user_site = data.get('user_site')
         competitors = data.get('competitors', [])
 
@@ -236,7 +193,7 @@ def update_competitor(competitor_id):
     
     title_selector = data.get('title_selector')
     price_selector = data.get('price_selector')
-    url = data.get('url')  # Optional: update catalog URL
+    url = data.get('url')
     
     competitor = CompetitorService.update_selectors(competitor_id, title_selector, price_selector, url)
     
@@ -252,14 +209,12 @@ def update_competitor(competitor_id):
 @analysis_bp.route('/competitor/<int:competitor_id>/reparse', methods=['POST'])
 @jwt_required()
 def reparse_competitor(competitor_id):
-    """Update selectors and re-parse products for a competitor"""
     current_user_id = get_jwt_identity()
     competitor = Competitor.query.get(competitor_id)
     
     if not competitor:
         return jsonify({'error': 'Конкурент не найден'}), 404
     
-    # Verify user has access to this competitor's analysis
     analysis = AnalysisService.get_analysis_by_id(competitor.analysis_id, current_user_id)
     if not analysis:
         return jsonify({'error': 'Доступ запрещен'}), 403
@@ -272,7 +227,6 @@ def reparse_competitor(competitor_id):
     if not all([url, title_selector, price_selector]):
         return jsonify({'error': 'URL и селекторы обязательны'}), 400
     
-    # Update competitor settings
     competitor.title_selector = title_selector
     competitor.price_selector = price_selector
     if url:
@@ -280,7 +234,6 @@ def reparse_competitor(competitor_id):
     
     db.session.commit()
     
-    # Parse products with new settings
     products = SiteParsingService.parse_competitor_site(
         competitor_id=competitor_id,
         url=url,
@@ -302,33 +255,6 @@ def delete_competitor(competitor_id):
         return jsonify({'message': 'Competitor deleted successfully'}), 200
     
     return jsonify({'error': 'Competitor not found'}), 404
-
-
-@analysis_bp.route('/<int:analysis_id>/select-competitors', methods=['POST'])
-@jwt_required()
-def select_competitors(analysis_id):
-    current_user_id = get_jwt_identity()
-    analysis = AnalysisService.get_analysis_by_id(analysis_id, current_user_id)
-    
-    if not analysis:
-        return jsonify({'error': 'Analysis not found'}), 404
-    
-    data = request.get_json()
-    selected_domains = data.get('competitors', [])
-    
-    if not selected_domains:
-        return jsonify({'error': 'No competitors selected'}), 400
-    
-    if len(selected_domains) > 3:
-        return jsonify({'error': 'Maximum 3 competitors allowed'}), 400
-    
-    domain_names = [c.get('domain') if isinstance(c, dict) else c for c in selected_domains]
-    saved_competitors = SearchService.save_selected_competitors(analysis_id, domain_names)
-    
-    return jsonify({
-        'message': 'Competitors saved successfully',
-        'competitors': [c.to_dict() for c in saved_competitors]
-    }), 200
 
 
 @analysis_bp.route('/competitor/<int:competitor_id>/parse', methods=['POST'])
@@ -414,7 +340,6 @@ def unlink_products(link_id):
 @analysis_bp.route('/<int:analysis_id>/update-prices', methods=['POST'])
 @jwt_required()
 def update_analysis_prices(analysis_id):
-    """Update prices for all competitors in an analysis"""
     current_user_id = get_jwt_identity()
     analysis = AnalysisService.get_analysis_by_id(analysis_id, current_user_id)
     
@@ -441,13 +366,11 @@ def update_analysis_prices(analysis_id):
 @analysis_bp.route('/competitor/<int:competitor_id>/update-prices', methods=['POST'])
 @jwt_required()
 def update_competitor_prices(competitor_id):
-    """Update prices for a single competitor"""
     competitor = Competitor.query.get(competitor_id)
     
     if not competitor:
         return jsonify({'error': 'Конкурент не найден'}), 404
     
-    # Verify user has access to this competitor's analysis
     current_user_id = get_jwt_identity()
     analysis = AnalysisService.get_analysis_by_id(competitor.analysis_id, current_user_id)
     
@@ -475,7 +398,6 @@ def update_competitor_prices(competitor_id):
 @analysis_bp.route('/<int:analysis_id>/price-dynamics', methods=['GET'])
 @jwt_required()
 def get_price_dynamics(analysis_id):
-    """Get price dynamics chart data for an analysis"""
     current_user_id = get_jwt_identity()
     analysis = AnalysisService.get_analysis_by_id(analysis_id, current_user_id)
     
@@ -503,7 +425,6 @@ def check_site():
     if not url.startswith(('http://', 'https://')):
         url = 'https://' + url
     
-    # Проверяем, является ли домен исключенным
     from ..utils.domains import extract_domain
     domain = extract_domain(url)
     if is_excluded_domain(domain):
