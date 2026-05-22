@@ -11,17 +11,6 @@ build/
 target/
 .gradle/
 
-# Compiled files
-*.pyc
-*.class
-*.o
-*.exe
-*.dll
-*.so
-*.a
-*.obj
-*.out
-
 # Editor/IDE files
 .vscode/
 .idea/
@@ -41,6 +30,17 @@ Thumbs.db
 coverage/
 htmlcov/
 .coverage
+
+# Compiled files
+*.pyc
+*.class
+*.o
+*.exe
+*.dll
+*.so
+*.a
+*.obj
+*.out
 
 # Compressed files
 *.zip
