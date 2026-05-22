@@ -330,7 +330,7 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
               angle={0}
               textAnchor="middle"
               height={50}
-              tick={{ fill: 'currentColor' }}
+              tick={{ fill: 'currentColor', dy: 10 }}
               type="category"
               scale="point"
               padding={{ left: 0, right: 0 }}

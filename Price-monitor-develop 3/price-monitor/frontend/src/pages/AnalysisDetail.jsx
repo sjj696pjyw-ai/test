@@ -196,11 +196,11 @@ export default function AnalysisDetail() {
       }
 
       const result = response.data.result
-      
+
       if (response.status === 200 || response.status === 201) {
         // Fetch updated analysis data
         await fetchAnalysis()
-        
+
         if (competitorId) {
           success('Цены успешно обновлены')
         } else {
@@ -322,38 +322,38 @@ export default function AnalysisDetail() {
       showError('Нет данных для экспорта. Сначала свяжите товары.')
       return
     }
-    
+
     const data = analysis.product_links.map(link => ({
       'Товар конкурента': link.competitor_product?.name || 'N/A',
       'Ваш товар': link.user_product?.name || 'N/A',
       'Ваша цена': link.user_product?.price || 'N/A',
       'Цена конкурента': link.competitor_product?.price || 'N/A',
-      'Разница (₽)': link.price_difference !== null 
-        ? `${link.price_difference >= 0 ? '+' : '-'}${Math.abs(link.price_difference)}` 
+      'Разница (₽)': link.price_difference !== null
+        ? `${link.price_difference >= 0 ? '+' : '-'}${Math.abs(link.price_difference)}`
         : 'N/A'
     }))
-    
+
     console.log('Exporting to Excel, data:', data.length, 'rows')
     exportToExcel(data, `analysis_${id}_${Date.now()}`)
   }
- 
+
   const handleExportCSV = () => {
     console.log('Export CSV clicked, product_links:', analysis?.product_links?.length)
     if (!analysis?.product_links?.length) {
       showError('Нет данных для экспорта. Сначала свяжите товары.')
       return
     }
-    
+
     const data = analysis.product_links.map(link => ({
       'Товар конкурента': link.competitor_product?.name || 'N/A',
       'Ваш товар': link.user_product?.name || 'N/A',
       'Ваша цена': link.user_product?.price || 'N/A',
       'Цена конкурента': link.competitor_product?.price || 'N/A',
-      'Разница (₽)': link.price_difference !== null 
-        ? `${link.price_difference >= 0 ? '+' : '-'}${Math.abs(link.price_difference)}` 
+      'Разница (₽)': link.price_difference !== null
+        ? `${link.price_difference >= 0 ? '+' : '-'}${Math.abs(link.price_difference)}`
         : 'N/A'
     }))
-    
+
     console.log('Exporting to CSV, data:', data.length, 'rows')
     exportToCSV(data, `analysis_${id}_${Date.now()}`)
   }
@@ -402,7 +402,7 @@ export default function AnalysisDetail() {
       }))
       return
     }
-    
+
     try {
       await api.delete(`/analysis/unlink/${linkId}`)
       await fetchAnalysis()
@@ -417,8 +417,8 @@ export default function AnalysisDetail() {
   }
 
   const toggleCompetitorProductSelection = (productId) => {
-    setSelectedCompetitorProducts(prev => 
-      prev.includes(productId) 
+    setSelectedCompetitorProducts(prev =>
+      prev.includes(productId)
         ? prev.filter(id => id !== productId)
         : [...prev, productId]
     )
@@ -532,41 +532,37 @@ export default function AnalysisDetail() {
         <nav className="flex space-x-8">
           <button
             onClick={() => setActiveTab('report')}
-            className={`pb-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'report'
-                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600'
-            }`}
+            className={`pb-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'report'
+              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600'
+              }`}
           >
             Отчёт
           </button>
           <button
             onClick={() => setActiveTab('products')}
-            className={`pb-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'products'
-                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600'
-            }`}
+            className={`pb-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'products'
+              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600'
+              }`}
           >
             Ваши товары ({userCompetitor?.products?.length || 0})
           </button>
           <button
             onClick={() => setActiveTab('competitors')}
-            className={`pb-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'competitors'
-                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600'
-            }`}
+            className={`pb-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'competitors'
+              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600'
+              }`}
           >
             Конкуренты ({competitorList.length})
           </button>
           <button
             onClick={() => setActiveTab('linking')}
-            className={`pb-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'linking'
-                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600'
-            }`}
+            className={`pb-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'linking'
+              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600'
+              }`}
           >
             Связывание ({analysis.product_links?.length || 0})
           </button>
@@ -585,8 +581,8 @@ export default function AnalysisDetail() {
                   </h3>
                 </div>
                 {priceDynamicsData && priceDynamicsData.length > 0 ? (
-                  <PriceDynamicsChart 
-                    data={priceDynamicsData} 
+                  <PriceDynamicsChart
+                    data={priceDynamicsData}
                     dateRange={{
                       start: analysis.created_at,
                       end: new Date().toISOString()
@@ -606,7 +602,7 @@ export default function AnalysisDetail() {
 
           <div className="card">
             <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Сводный отчёт</h3>
-            
+
             {(!analysis.product_links || analysis.product_links.length === 0) ? (
               <div className="text-center py-8">
                 <p className="text-gray-500 dark:text-gray-400 mb-4">Нет данных для отображения</p>
@@ -641,12 +637,11 @@ export default function AnalysisDetail() {
                         <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                           {formatPrice(link.competitor_product?.price)}
                         </td>
-                        <td className={`px-4 py-3 text-sm font-medium ${
-                          link.price_difference >= 0 ? 'text-red-600 dark:text-red-400' : 
+                        <td className={`px-4 py-3 text-sm font-medium ${link.price_difference > 0 ? 'text-red-600 dark:text-red-400' :
                           link.price_difference < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-gray-100'
-                        }`}>
-                          {link.price_difference !== null 
-                            ? `${link.price_difference >= 0 ? '+' : '-'}${formatPrice(Math.abs(link.price_difference))}`
+                          }`}>
+                          {link.price_difference !== null
+                            ? `${link.price_difference > 0 ? '+' : link.price_difference < 0 ? "-" : ""}${formatPrice(Math.abs(link.price_difference))}`
                             : 'N/A'}
                         </td>
                       </tr>
@@ -708,7 +703,7 @@ export default function AnalysisDetail() {
         </div>
       )}
 
-       {activeTab === 'products' && (
+      {activeTab === 'products' && (
         <div className="space-y-6">
           {userCompetitor && (
             <div className="card">
@@ -852,11 +847,10 @@ export default function AnalysisDetail() {
                   <button
                     key={product.id}
                     onClick={() => { setSelectedProduct(product); setLinkingMode('competitor'); }}
-                    className={`p-3 text-left rounded-lg border-2 transition-all ${
-                      selectedProduct?.id === product.id
-                        ? 'border-primary-500 bg-white dark:bg-gray-800'
-                        : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600'
-                    }`}
+                    className={`p-3 text-left rounded-lg border-2 transition-all ${selectedProduct?.id === product.id
+                      ? 'border-primary-500 bg-white dark:bg-gray-800'
+                      : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600'
+                      }`}
                   >
                     <p className="text-sm font-medium truncate text-gray-900 dark:text-gray-100">{product.name}</p>
                     <p className="text-xs text-gray-500 dark:text-gray-400">{formatPrice(product.price)}</p>
@@ -892,18 +886,16 @@ export default function AnalysisDetail() {
                           <button
                             key={product.id}
                             onClick={() => toggleCompetitorProductSelection(product.id)}
-                            className={`p-3 text-left rounded-lg border-2 transition-all flex items-center justify-between w-full ${
-                              selectedCompetitorProducts.includes(product.id)
-                                ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
-                                : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 hover:border-primary-500'
-                            }`}
+                            className={`p-3 text-left rounded-lg border-2 transition-all flex items-center justify-between w-full ${selectedCompetitorProducts.includes(product.id)
+                              ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
+                              : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 hover:border-primary-500'
+                              }`}
                           >
                             <div className="flex items-center space-x-3">
-                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                                selectedCompetitorProducts.includes(product.id)
-                                  ? 'border-primary-500 bg-primary-500'
-                                  : 'border-gray-300'
-                              }`}>
+                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${selectedCompetitorProducts.includes(product.id)
+                                ? 'border-primary-500 bg-primary-500'
+                                : 'border-gray-300'
+                                }`}>
                                 {selectedCompetitorProducts.includes(product.id) && (
                                   <Check className="h-3 w-3 text-white" />
                                 )}
@@ -1030,7 +1022,7 @@ export default function AnalysisDetail() {
                         <span>Обновить</span>
                       </button>
                     )}
-                    <Link 
+                    <Link
                       to={`/analysis/${id}/competitor/${comp.id}/selectors`}
                       className="btn-secondary text-sm"
                     >
@@ -1071,7 +1063,7 @@ export default function AnalysisDetail() {
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
               Редактирование домена и селекторов
             </h3>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -1085,7 +1077,7 @@ export default function AnalysisDetail() {
                   placeholder="example.ru/catalog"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Селектор названия товара
@@ -1098,7 +1090,7 @@ export default function AnalysisDetail() {
                   placeholder=".product-title"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Селектор цены
@@ -1112,7 +1104,7 @@ export default function AnalysisDetail() {
                 />
               </div>
             </div>
-            
+
             <div className="flex justify-end space-x-2 mt-6">
               <button
                 onClick={() => setShowEditDomainModal(false)}
