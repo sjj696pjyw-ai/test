@@ -140,7 +140,7 @@ export default function AnalysisDetail() {
   const [activeTab, setActiveTab] = useState('report')
   const [linkingMode, setLinkingMode] = useState(null)
   const [selectedProduct, setSelectedProduct] = useState(null)
-  const [selectedCompetitorProduct, setSelectedCompetitorProduct] = useState(null)
+  const [selectedCompetitorProducts, setSelectedCompetitorProducts] = useState({}) // { competitorId: productId }
   const [userSiteUrl, setUserSiteUrl] = useState('')
   const [userSiteStatus, setUserSiteStatus] = useState(null)
   const [isEditingName, setIsEditingName] = useState(false)
@@ -374,18 +374,21 @@ export default function AnalysisDetail() {
     }
   }
 
-  const handleSelectCompetitorProduct = async (competitorProductId) => {
-    if (!selectedProduct) return
+  const handleSelectCompetitorProduct = async () => {
+    if (!selectedProduct || Object.keys(selectedCompetitorProducts).length === 0) return
     try {
-      await api.post('/analysis/link', {
-        analysis_id: parseInt(id),
-        user_product_id: selectedProduct.id,
-        competitor_product_id: competitorProductId
-      })
+      const linkPromises = Object.entries(selectedCompetitorProducts).map(([competitorId, productId]) => 
+        api.post('/analysis/link', {
+          analysis_id: parseInt(id),
+          user_product_id: selectedProduct.id,
+          competitor_product_id: productId
+        })
+      )
+      await Promise.all(linkPromises)
       await fetchAnalysis()
       setLinkingMode(null)
       setSelectedProduct(null)
-      setSelectedCompetitorProduct(null)
+      setSelectedCompetitorProducts({})
     } catch (error) {
       console.error('Error linking products:', error)
     }
@@ -414,12 +417,16 @@ export default function AnalysisDetail() {
     }
   }
 
-  const handleSelectCompetitorProductClick = (productId) => {
-    if (selectedCompetitorProduct === productId) {
-      setSelectedCompetitorProduct(null)
-    } else {
-      setSelectedCompetitorProduct(productId)
-    }
+  const handleSelectCompetitorProductClick = (competitorId, productId) => {
+    setSelectedCompetitorProducts(prev => {
+      const newSelection = { ...prev }
+      if (newSelection[competitorId] === productId) {
+        delete newSelection[competitorId]
+      } else {
+        newSelection[competitorId] = productId
+      }
+      return newSelection
+    })
   }
 
   if (loading) {
@@ -863,7 +870,7 @@ export default function AnalysisDetail() {
               <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
                 Выбранный товар: <strong>{selectedProduct.name}</strong>
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Выберите один товар конкурента:</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Выберите по одному товару от каждого конкурента (необязательно для всех):</p>
               <div className="space-y-4 max-h-96 overflow-y-auto">
                 {competitorList.map(competitor => (
                   competitor.products?.length > 0 && (
@@ -883,18 +890,18 @@ export default function AnalysisDetail() {
                         {competitor.products.map(product => (
                           <button
                             key={product.id}
-                            onClick={() => handleSelectCompetitorProductClick(product.id)}
-                            className={`p-3 text-left rounded-lg border-2 transition-all flex items-center justify-between w-full ${selectedCompetitorProduct === product.id
+                            onClick={() => handleSelectCompetitorProductClick(competitor.id, product.id)}
+                            className={`p-3 text-left rounded-lg border-2 transition-all flex items-center justify-between w-full ${selectedCompetitorProducts[competitor.id] === product.id
                               ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
                               : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 hover:border-primary-500'
                               }`}
                           >
                             <div className="flex items-center space-x-3">
-                              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedCompetitorProduct === product.id
+                              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedCompetitorProducts[competitor.id] === product.id
                                 ? 'border-primary-500 bg-primary-500'
                                 : 'border-gray-300'
                                 }`}>
-                                {selectedCompetitorProduct === product.id && (
+                                {selectedCompetitorProducts[competitor.id] === product.id && (
                                   <Check className="h-3 w-3 text-white" />
                                 )}
                               </div>
@@ -908,13 +915,13 @@ export default function AnalysisDetail() {
                   )
                 ))}
               </div>
-              {selectedCompetitorProduct && (
+              {Object.keys(selectedCompetitorProducts).length > 0 && (
                 <div className="mt-4 flex items-center justify-between">
                   <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Выбран 1 товар
+                    Выбрано товаров: {Object.keys(selectedCompetitorProducts).length}
                   </p>
                   <button
-                    onClick={() => handleSelectCompetitorProduct(selectedCompetitorProduct)}
+                    onClick={handleSelectCompetitorProduct}
                     className="btn-primary"
                   >
                     Связать
