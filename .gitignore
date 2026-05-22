@@ -6,10 +6,12 @@ venv/
 __pycache__/
 .mypy_cache/
 .pytest_cache/
+dist/
+build/
 target/
 .gradle/
 
-# Compiled/Binary files
+# Compiled files
 *.pyc
 *.class
 *.o
@@ -19,10 +21,6 @@ target/
 *.a
 *.obj
 *.out
-
-# Build artifacts
-dist/
-build/
 
 # Editor/IDE files
 .vscode/
@@ -38,10 +36,8 @@ Thumbs.db
 .env.local
 *.env.*
 
-# Logs
+# Logs and coverage
 *.log
-
-# Coverage
 coverage/
 htmlcov/
 .coverage
