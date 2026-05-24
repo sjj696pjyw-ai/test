@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onFilterChange, userProducts }) {
   const [activeDot, setActiveDot] = useState(null)
   const [filterProduct, setFilterProduct] = useState(selectedUserProductId || null)
+  const [highlightedLegend, setHighlightedLegend] = useState(null)
 
   if (!data || data.length === 0) {
     return (
@@ -46,12 +47,12 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
     }
   }
 
-  // Transform data for Recharts format
+  // Transform data for Recharts format - connect all points without gaps
   const productLegends = []
   const seenProducts = new Set()
   const allDates = new Set()
 
-  // Collect all unique dates and build series
+  // Collect all unique dates from actual data points (not generating full date range)
   filteredData.forEach((series, index) => {
     const userColor = '#22c55e' // green-500
     const competitorColor = '#3b82f6' // blue-500
@@ -65,7 +66,8 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
         type: 'user',
         color: userColor,
         url: series.product_url,
-        dataKey: `user_${index}`
+        dataKey: `user_${index}`,
+        seriesIndex: index
       })
     }
 
@@ -78,7 +80,8 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
         type: 'competitor',
         color: competitorColor,
         url: series.product_url,
-        dataKey: `competitor_${index}`
+        dataKey: `competitor_${index}`,
+        seriesIndex: index
       })
     }
 
@@ -87,31 +90,12 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
     })
   })
 
-  // Generate complete date range: 3 days before today, today in center, 3 days after
+  // Sort dates chronologically
+  const sortedDates = Array.from(allDates).sort()
+
+  // Build chart data only for dates that have actual data
   const chartData = useMemo(() => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const todayStr = today.toISOString().split('T')[0]
-
-    // Create 7-day range: 3 days before, today, 3 days after
-    const startDate = new Date(today)
-    startDate.setDate(startDate.getDate() - 3)
-
-    const endDate = new Date(today)
-    endDate.setDate(endDate.getDate() + 3)
-
-    const dateRangeArray = []
-    const currentDate = new Date(startDate)
-
-    while (currentDate <= endDate) {
-      const dateStr = currentDate.toISOString().split('T')[0]
-      dateRangeArray.push(dateStr)
-      currentDate.setDate(currentDate.getDate() + 1)
-    }
-
-    // Build chart data points
-    const result = []
-    dateRangeArray.forEach(date => {
+    return sortedDates.map(date => {
       const point = { date }
 
       filteredData.forEach((series, index) => {
@@ -126,11 +110,9 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
         }
       })
 
-      result.push(point)
+      return point
     })
-
-    return result
-  }, [filteredData])
+  }, [filteredData, sortedDates])
 
   // Calculate min and max prices for dynamic Y-axis domain
   let minPrice = Infinity
@@ -187,13 +169,25 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
         {productLegends.map((legend, idx) => (
           <div
             key={idx}
-            className="flex items-center gap-2 transition-opacity"
+            className={`flex items-center gap-2 transition-opacity cursor-pointer ${
+              highlightedLegend !== null && highlightedLegend !== legend.dataKey ? 'opacity-40' : 'opacity-100'
+            }`}
+            onMouseEnter={() => setHighlightedLegend(legend.dataKey)}
+            onMouseLeave={() => setHighlightedLegend(null)}
           >
             <div
-              className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: legend.color }}
+              className={`w-3 h-3 rounded-full ${
+                highlightedLegend === legend.dataKey ? 'ring-2 ring-offset-2 dark:ring-offset-gray-900' : ''
+              }`}
+              style={{ 
+                backgroundColor: legend.color,
+                boxShadow: highlightedLegend === legend.dataKey ? `0 0 8px ${legend.color}` : 'none',
+                ringColor: legend.color
+              }}
             ></div>
-            <span className="text-sm text-gray-700 dark:text-gray-300 max-w-xs truncate">
+            <span className={`text-sm text-gray-700 dark:text-gray-300 max-w-xs truncate ${
+              highlightedLegend === legend.dataKey ? 'font-semibold' : ''
+            }`}>
               {legend.name}
             </span>
           </div>
@@ -227,16 +221,22 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
     const isHovered = activeDot &&
       activeDot.dataKey === dataKey &&
       activeDot.index === index
+    
+    // Check if this dot should be highlighted based on legend hover
+    const isHighlightedByLegend = highlightedLegend !== null && highlightedLegend === dataKey
 
     return (
       <circle
         cx={cx}
         cy={cy}
-        r={isHovered ? 6 : 4}
+        r={isHovered || isHighlightedByLegend ? 8 : 4}
         fill={fill}
         stroke={stroke}
-        strokeWidth={2}
-        style={{ cursor: 'pointer' }}
+        strokeWidth={isHovered || isHighlightedByLegend ? 3 : 2}
+        style={{ 
+          cursor: 'pointer',
+          filter: isHighlightedByLegend ? `drop-shadow(0 0 4px ${fill})` : 'none'
+        }}
         onMouseEnter={() => {
           setActiveDot({
             dataKey,
@@ -276,7 +276,8 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
         dot={(props) => <CustomDot {...props} />}
         activeDot={false}
         name={`${series.product_name}`}
-        connectNulls={false}
+        connectNulls={true}
+        isAnimationActive={false}
       />
     )
 
@@ -290,7 +291,8 @@ export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onF
         dot={(props) => <CustomDot {...props} />}
         activeDot={false}
         name={`${series.competitor_name} (${series.competitor_domain})`}
-        connectNulls={false}
+        connectNulls={true}
+        isAnimationActive={false}
       />
     )
   })
