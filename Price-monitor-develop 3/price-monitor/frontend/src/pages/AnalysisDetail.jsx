@@ -1010,6 +1010,10 @@ export default function AnalysisDetail() {
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
+                    <Link to={`/analysis/${id}/competitor/${comp.id}/selectors`} className="btn-secondary text-sm flex items-center space-x-2">
+                      <Settings className="h-4 w-4" />
+                      <span>Настроить</span>
+                    </Link>
                     {!isDemo && comp.products?.length > 0 && (
                       <button
                         onClick={() => handleUpdatePrices(comp.id)}
@@ -1020,12 +1024,6 @@ export default function AnalysisDetail() {
                         <span>Обновить</span>
                       </button>
                     )}
-                    <Link
-                      to={`/analysis/${id}/competitor/${comp.id}/selectors`}
-                      className="btn-secondary text-sm"
-                    >
-                      Настроить
-                    </Link>
                   </div>
                 </div>
                 {comp.products?.length > 0 ? (
