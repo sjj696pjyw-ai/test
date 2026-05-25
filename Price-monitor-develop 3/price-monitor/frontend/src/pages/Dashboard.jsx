@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import api from '../utils/api'
-import { Plus, Calendar, Globe, Trash2, Eye, Search, Edit3, ChevronLeft, ChevronRight, Filter, TrendingUp, Users, BarChart3 } from 'lucide-react'
+import { Plus, Calendar, Globe, Trash2, Eye, Search, Edit3, ChevronLeft, ChevronRight, Filter, TrendingUp, Users, BarChart3, Check, X } from 'lucide-react'
 import { REGIONS, getRegionName } from '../utils/regions'
 import { formatDate } from '../utils/export'
 import { AnalysisHistoryChart, CompetitorsDistribution } from '../components/Charts'
@@ -29,7 +29,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [showNewAnalysisModal, setShowNewAnalysisModal] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
-  const [filterType, setFilterType] = useState('all')
+  const [selectedRegions, setSelectedRegions] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const { user } = useAuth()
   const { success, error: showError } = useToast()
@@ -69,13 +69,12 @@ export default function Dashboard() {
 
   const filteredAnalyses = useMemo(() => {
     return analyses.filter(a => {
-      const matchesType = filterType === 'all' || a.analysis_type === filterType
       const searchLower = searchQuery.toLowerCase()
-      const matchesSearch = !searchQuery ||
-        a.name?.toLowerCase().includes(searchLower)
-      return matchesType && matchesSearch
+      const matchesSearch = !searchQuery || a.name?.toLowerCase().includes(searchLower)
+      const matchesRegion = selectedRegions.length === 0 || selectedRegions.includes(a.region)
+      return matchesRegion && matchesSearch
     })
-  }, [analyses, filterType, searchQuery])
+  }, [analyses, selectedRegions, searchQuery])
 
   const totalPages = Math.ceil(filteredAnalyses.length / ITEMS_PER_PAGE)
   const paginatedAnalyses = filteredAnalyses.slice(
@@ -85,7 +84,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [filterType, searchQuery])
+  }, [selectedRegions, searchQuery])
 
   const stats = {
     total: analyses.length,
@@ -199,7 +198,7 @@ export default function Dashboard() {
               Все анализы ({filteredAnalyses.length})
             </h2>
             <div className="flex items-center space-x-3">
-              <div className="relative w-96">
+              <div className="relative w-64">
                 <input
                   type="text"
                   placeholder="     Название анализа"
@@ -209,14 +208,38 @@ export default function Dashboard() {
                 />
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
               </div>
-              <select
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                className="input-field py-1.5 text-sm"
-              >
-                <option value="all">Все типы</option>
-                <option value="manual">Ручные</option>
-              </select>
+              <div className="relative">
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const region = e.target.value
+                    if (region && !selectedRegions.includes(region)) {
+                      setSelectedRegions([...selectedRegions, region])
+                    }
+                  }}
+                  className="input-field py-1.5 text-sm pr-8"
+                >
+                  <option value="">Все регионы</option>
+                  {REGIONS.filter(r => analyses.some(a => a.region === r.value)).map(r => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
+                </select>
+              </div>
+              {selectedRegions.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {selectedRegions.map(regionCode => {
+                    const region = REGIONS.find(r => r.value === regionCode)
+                    return (
+                      <span key={regionCode} className="inline-flex items-center gap-1 px-2 py-1 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded text-xs">
+                        {region?.label || regionCode}
+                        <button onClick={() => setSelectedRegions(selectedRegions.filter(r => r !== regionCode))} className="hover:text-primary-900 dark:hover:text-primary-100">
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
