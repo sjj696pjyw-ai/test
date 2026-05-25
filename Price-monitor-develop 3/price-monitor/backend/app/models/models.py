@@ -34,11 +34,11 @@ class Analysis(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    name = db.Column(db.String(255), nullable=True)  # Custom name for the analysis
+    name = db.Column(db.String(255), nullable=True)
     analysis_type = db.Column(db.String(20), nullable=False)
     region = db.Column(db.String(100), nullable=False)
     queries = db.Column(db.Text)
-    user_site = db.Column(db.String(255))  # URL of the user's site for comparison
+    user_site = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     competitors = db.relationship('Competitor', backref='analysis', lazy='dynamic', cascade='all, delete-orphan')
@@ -53,7 +53,7 @@ class Analysis(db.Model):
             'queries': self.queries.split('\n') if self.queries else [],
             'user_site': self.user_site,
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'competitors_count': self.competitors.count()
+            'competitors_count': self.competitors.filter_by(is_user_site=False).count()
         }
 
 
@@ -62,15 +62,15 @@ class Competitor(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     analysis_id = db.Column(db.Integer, db.ForeignKey('analyses.id'), nullable=False)
-    domain = db.Column(db.String(255), nullable=False)  # URL of the catalog page for parsing
+    domain = db.Column(db.String(255), nullable=False)
     competitor_type = db.Column(db.String(20))
     position = db.Column(db.Integer)
     is_user_site = db.Column(db.Boolean, default=False)
     title_selector = db.Column(db.String(255))
     price_selector = db.Column(db.String(255))
-    last_price_update = db.Column(db.DateTime)  # Last successful price update timestamp
-    update_status = db.Column(db.String(50), default='pending')  # pending, success, partial, error
-    update_error_message = db.Column(db.Text)  # Error message if update failed
+    last_price_update = db.Column(db.DateTime)
+    update_status = db.Column(db.String(50), default='pending')
+    update_error_message = db.Column(db.Text)
 
     products = db.relationship('Product', backref='competitor', lazy='dynamic', cascade='all, delete-orphan')
 
@@ -97,6 +97,7 @@ class Product(db.Model):
     name = db.Column(db.String(500), nullable=False)
     price = db.Column(db.Float)
     currency = db.Column(db.String(10), default='RUB')
+    external_id = db.Column(db.String(255))
     url = db.Column(db.String(1000))  # Product URL for matching
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -106,12 +107,12 @@ class Product(db.Model):
             'name': self.name,
             'price': self.price,
             'currency': self.currency,
+            'external_id': self.external_id,
             'url': self.url
         }
 
 
 class PriceHistory(db.Model):
-    """Table to store price history for tracking price dynamics"""
     __tablename__ = 'price_history'
 
     id = db.Column(db.Integer, primary_key=True)
