@@ -140,7 +140,7 @@ export default function AnalysisDetail() {
   const [activeTab, setActiveTab] = useState('report')
   const [linkingMode, setLinkingMode] = useState(null)
   const [selectedProduct, setSelectedProduct] = useState(null)
-  const [selectedCompetitorProducts, setSelectedCompetitorProducts] = useState([])
+  const [selectedCompetitorProduct, setSelectedCompetitorProduct] = useState(null)
   const [userSiteUrl, setUserSiteUrl] = useState('')
   const [userSiteStatus, setUserSiteStatus] = useState(null)
   const [isEditingName, setIsEditingName] = useState(false)
@@ -368,26 +368,24 @@ export default function AnalysisDetail() {
       await fetchAnalysis()
       setLinkingMode(null)
       setSelectedProduct(null)
-      setSelectedCompetitorProducts([])
+      setSelectedCompetitorProduct(null)
     } catch (error) {
       console.error('Error linking products:', error)
     }
   }
 
-  const linkMultipleProducts = async () => {
-    if (!selectedProduct || selectedCompetitorProducts.length === 0) return
+  const handleSelectCompetitorProduct = async (competitorProductId) => {
+    if (!selectedProduct) return
     try {
-      for (const compProductId of selectedCompetitorProducts) {
-        await api.post('/analysis/link', {
-          analysis_id: parseInt(id),
-          user_product_id: selectedProduct.id,
-          competitor_product_id: compProductId
-        })
-      }
+      await api.post('/analysis/link', {
+        analysis_id: parseInt(id),
+        user_product_id: selectedProduct.id,
+        competitor_product_id: competitorProductId
+      })
       await fetchAnalysis()
       setLinkingMode(null)
       setSelectedProduct(null)
-      setSelectedCompetitorProducts([])
+      setSelectedCompetitorProduct(null)
     } catch (error) {
       console.error('Error linking products:', error)
     }
@@ -416,12 +414,12 @@ export default function AnalysisDetail() {
     }
   }
 
-  const toggleCompetitorProductSelection = (productId) => {
-    setSelectedCompetitorProducts(prev =>
-      prev.includes(productId)
-        ? prev.filter(id => id !== productId)
-        : [...prev, productId]
-    )
+  const handleSelectCompetitorProductClick = (productId) => {
+    if (selectedCompetitorProduct === productId) {
+      setSelectedCompetitorProduct(null)
+    } else {
+      setSelectedCompetitorProduct(productId)
+    }
   }
 
   if (loading) {
@@ -865,7 +863,7 @@ export default function AnalysisDetail() {
               <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
                 Выбранный товар: <strong>{selectedProduct.name}</strong>
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Выберите товары конкурента (можно несколько):</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Выберите один товар конкурента:</p>
               <div className="space-y-4 max-h-96 overflow-y-auto">
                 {competitorList.map(competitor => (
                   competitor.products?.length > 0 && (
@@ -885,18 +883,18 @@ export default function AnalysisDetail() {
                         {competitor.products.map(product => (
                           <button
                             key={product.id}
-                            onClick={() => toggleCompetitorProductSelection(product.id)}
-                            className={`p-3 text-left rounded-lg border-2 transition-all flex items-center justify-between w-full ${selectedCompetitorProducts.includes(product.id)
+                            onClick={() => handleSelectCompetitorProductClick(product.id)}
+                            className={`p-3 text-left rounded-lg border-2 transition-all flex items-center justify-between w-full ${selectedCompetitorProduct === product.id
                               ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
                               : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 hover:border-primary-500'
                               }`}
                           >
                             <div className="flex items-center space-x-3">
-                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${selectedCompetitorProducts.includes(product.id)
+                              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedCompetitorProduct === product.id
                                 ? 'border-primary-500 bg-primary-500'
                                 : 'border-gray-300'
                                 }`}>
-                                {selectedCompetitorProducts.includes(product.id) && (
+                                {selectedCompetitorProduct === product.id && (
                                   <Check className="h-3 w-3 text-white" />
                                 )}
                               </div>
@@ -910,16 +908,16 @@ export default function AnalysisDetail() {
                   )
                 ))}
               </div>
-              {selectedCompetitorProducts.length > 0 && (
+              {selectedCompetitorProduct && (
                 <div className="mt-4 flex items-center justify-between">
                   <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Выбрано товаров: <strong>{selectedCompetitorProducts.length}</strong>
+                    Выбран 1 товар
                   </p>
                   <button
-                    onClick={linkMultipleProducts}
+                    onClick={() => handleSelectCompetitorProduct(selectedCompetitorProduct)}
                     className="btn-primary"
                   >
-                    Связать ({selectedCompetitorProducts.length})
+                    Связать
                   </button>
                 </div>
               )}

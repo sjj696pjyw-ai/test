@@ -66,10 +66,10 @@ export function PriceDifferenceChart({ data }) {
       {
         label: 'Разница в цене (₽)',
         data: data?.map(d => d.price_difference) || [],
-        backgroundColor: data?.map(d => 
-          d.price_difference > 0 ? 'rgba(239, 68, 68, 0.7)' : 
-          d.price_difference < 0 ? 'rgba(34, 197, 94, 0.7)' : 
-          'rgba(156, 163, 175, 0.7)'
+        backgroundColor: data?.map(d =>
+          d.price_difference > 0 ? 'rgba(239, 68, 68, 0.7)' :
+            d.price_difference < 0 ? 'rgba(34, 197, 94, 0.7)' :
+              'rgba(156, 163, 175, 0.7)'
         ) || [],
         borderWidth: 1
       }
@@ -83,7 +83,7 @@ export function PriceDifferenceChart({ data }) {
       title: { display: true, text: 'Разница цен' }
     },
     scales: {
-      y: { 
+      y: {
         beginAtZero: true,
         title: { display: true, text: 'Разница (₽)' }
       }
@@ -128,7 +128,7 @@ export function CompetitorsDistribution({ competitors }) {
 export function AnalysisHistoryChart({ analyses }) {
   const last7Days = []
   const counts = {}
-  
+
   for (let i = 6; i >= 0; i--) {
     const date = new Date()
     date.setDate(date.getDate() - i)
@@ -161,8 +161,7 @@ export function AnalysisHistoryChart({ analyses }) {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { display: false },
-      title: { display: true, text: 'История анализов (7 дней)' }
+      legend: { display: false }
     },
     scales: {
       y: { beginAtZero: true, ticks: { stepSize: 1 } }

@@ -174,7 +174,7 @@ export default function Dashboard() {
       {analyses.length > 0 && (
         <div className="flex justify-center mb-8">
           <div className="card w-full max-w-2xl">
-            <h3 className="text-lg font-semibold mb-4">История анализов</h3>
+            <h3 className="text-lg font-semibold mb-4">История анализов (7 дней) </h3>
             <div className="h-48 overflow-hidden">
               <AnalysisHistoryChart analyses={analyses} />
             </div>
@@ -532,10 +532,10 @@ function NewAnalysisModal({ onClose, onSuccess }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Название анализа (необязательно)</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Название анализа</label>
             <input
               type="text"
-              value={analysisName}
+              value="Анализ #"
               onChange={(e) => setAnalysisName(e.target.value)}
               className="input-field"
               placeholder="Оставьте пустым для автоматического названия"
@@ -543,14 +543,14 @@ function NewAnalysisModal({ onClose, onSuccess }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ваш сайт</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ваш сайт (Url до каталога с товарами)</label>
             <div className="flex items-center space-x-2">
               <input
                 type="text"
                 value={userSite}
                 onChange={(e) => setUserSite(e.target.value)}
                 className="input-field flex-1"
-                placeholder="example.ru"
+                placeholder="example.ru/catalog/"
                 required
               />
               <button
@@ -569,10 +569,10 @@ function NewAnalysisModal({ onClose, onSuccess }) {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Конкуренты (до 3)</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Сайт конкурента (URL)</label>
             {competitors.map((comp, index) => (
               <div key={index} className="flex items-center space-x-2 mb-2">
-                <input type="text" value={comp} onChange={(e) => { const updated = [...competitors]; updated[index] = e.target.value; setCompetitors(updated); }} className="input-field flex-1" placeholder={`Конкурент ${index + 1}`} />
+                <input type="text" value={comp} onChange={(e) => { const updated = [...competitors]; updated[index] = e.target.value; setCompetitors(updated); }} className="input-field flex-1" placeholder={`Url до каталога конкурентов ${index + 1}`} />
                 <button
                   type="button"
                   onClick={() => checkSite(comp)}
