@@ -407,6 +407,7 @@ function NewAnalysisModal({ onClose, onSuccess }) {
   const [region, setRegion] = useState('213')
   const [regionSearch, setRegionSearch] = useState('')
   const [analysisName, setAnalysisName] = useState('')
+  const [analysesCount, setAnalysesCount] = useState(0)
   const [queries, setQueries] = useState('')
   const [positions, setPositions] = useState(5)
   const [resultTypes, setResultTypes] = useState(['organic'])
@@ -421,6 +422,22 @@ function NewAnalysisModal({ onClose, onSuccess }) {
   const [checkResults, setCheckResults] = useState({})
   const [checkingSite, setCheckingSite] = useState(null)
   const { error: showError } = useToast()
+
+  // Получаем количество анализов пользователя для автогенерации названия
+  useEffect(() => {
+    const fetchAnalysesCount = async () => {
+      try {
+        const response = await api.get('/analysis')
+        const count = response.data.analyses?.length || 0
+        setAnalysesCount(count)
+        setAnalysisName(`Анализ #${count + 1}`)
+      } catch (error) {
+        console.error('Error fetching analyses count:', error)
+        setAnalysisName('Анализ #1')
+      }
+    }
+    fetchAnalysesCount()
+  }, [])
 
   const checkSite = async (site) => {
     if (!site) return
@@ -607,7 +624,7 @@ function NewAnalysisModal({ onClose, onSuccess }) {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Название анализа</label>
             <input
               type="text"
-              value="Анализ #"
+              value={analysisName}
               onChange={(e) => setAnalysisName(e.target.value)}
               className="input-field"
               placeholder="Оставьте пустым для автоматического названия"
