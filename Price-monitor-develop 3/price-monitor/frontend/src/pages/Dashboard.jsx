@@ -305,7 +305,13 @@ export default function Dashboard() {
                     <span className="px-2 py-1 text-xs font-medium rounded-full bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300">
                       Ручной
                     </span>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">{analysis.competitors_count} конкурентов</span>
+                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                      {analysis.competitors_count} {
+                        analysis.competitors_count === 1 ? 'конкурент' :
+                        analysis.competitors_count >= 2 && analysis.competitors_count <= 4 ? 'конкурента' :
+                        'конкурентов'
+                      }
+                    </span>
                   </div>
                   <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2 truncate max-w-md">
                     {analysis.name || `Анализ #${analysis.id}`}
@@ -617,7 +623,7 @@ function NewAnalysisModal({ onClose, onSuccess }) {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Регион</label>
-            <select value={region} onChange={(e) => setRegion(e.target.value)} className="input-field">
+            <select value={region} onChange={(e) => setRegion(e.target.value)} className="input-field input-field-select">
               {filteredRegions.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
           </div>
