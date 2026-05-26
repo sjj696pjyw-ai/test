@@ -519,6 +519,13 @@ function NewAnalysisModal({ onClose, onSuccess }) {
     e.preventDefault()
     setError('')
 
+    // Проверяем, что указан хотя бы один конкурент
+    const filledCompetitors = competitors.filter(c => c.trim())
+    if (filledCompetitors.length === 0) {
+      showError('Укажите хотя бы одного конкурента для создания анализа')
+      return
+    }
+
     // Проверяем, не являются ли введенные сайты исключенными
     const sitesToCheck = []
     if (userSite) sitesToCheck.push(userSite)
@@ -580,7 +587,10 @@ function NewAnalysisModal({ onClose, onSuccess }) {
   }
 
   const handleConfirmCompetitors = async () => {
-    if (selectedCompetitors.length === 0) return
+    if (selectedCompetitors.length === 0) {
+      showError('Выберите хотя бы одного конкурента для создания анализа')
+      return
+    }
     setLoading(true)
     try {
       await api.post(`/analysis/${analysisId}/select-competitors`, {
