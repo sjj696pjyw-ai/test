@@ -255,9 +255,10 @@ export default function Dashboard() {
               <div className="relative" ref={regionDropdownRef}>
                 <button
                   onClick={() => setShowRegionDropdown(!showRegionDropdown)}
-                  className="input-field py-1.5 text-sm w-[300px] truncate flex items-center justify-between"
+                  className="input-field py-1.5 text-sm flex items-center justify-between overflow-hidden"
+                  style={{ width: '200px', minWidth: '200px' }}
                 >
-                  <span className="truncate">{getTruncatedRegionText(getRegionFilterText())}</span>
+                  <span className="truncate flex-1">{getTruncatedRegionText(getRegionFilterText())}</span>
                   <div className="flex items-center ml-2 flex-shrink-0">
                     {selectedRegions.length > 0 && (
                       <X className="h-4 w-4 mr-1" onClick={(e) => { e.stopPropagation(); clearRegions(); }} />
@@ -266,7 +267,7 @@ export default function Dashboard() {
                   </div>
                 </button>
                 {showRegionDropdown && (
-                  <div className="absolute right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 min-w-[200px] max-h-64 overflow-y-auto">
+                  <div className="absolute right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 min-w-[200px] max-h-[160px] overflow-y-auto">
                     {availableRegions.length === 0 ? (
                       <div className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400">Нет доступных регионов</div>
                     ) : (
