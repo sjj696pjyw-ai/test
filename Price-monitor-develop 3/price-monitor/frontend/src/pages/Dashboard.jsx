@@ -263,7 +263,7 @@ export default function Dashboard() {
                   )}
                 </button>
                 {showRegionDropdown && (
-                  <div className="absolute right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto min-w-[200px]">
+                  <div className={`absolute right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 min-w-[200px] ${availableRegions.length > 4 ? 'max-h-64 overflow-y-auto' : ''}`}>
                     {availableRegions.length === 0 ? (
                       <div className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400">Нет доступных регионов</div>
                     ) : (
