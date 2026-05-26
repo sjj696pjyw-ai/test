@@ -615,11 +615,22 @@ function NewAnalysisModal({ onClose, onSuccess }) {
             </div>
           </div>
 
-          <div>
+          <div className="relative">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Регион</label>
-            <select value={region} onChange={(e) => setRegion(e.target.value)} className="input-field">
-              {filteredRegions.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-            </select>
+
+            {/* Контейнер для select */}
+            <div className="relative">
+              <select
+                value={region}
+                onChange={(e) => setRegion(e.target.value)}
+                className="input-field w-full appearance-none" // appearance-none убирает стандартную стрелку
+              >
+                {filteredRegions.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+
+              {/* Кастомная стрелка */}
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+            </div>
           </div>
 
           <div>
