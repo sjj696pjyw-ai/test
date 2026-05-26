@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import api from '../utils/api'
-import { Plus, Calendar, Globe, Trash2, Eye, Search, Edit3, ChevronLeft, ChevronRight, Filter, TrendingUp, Users, BarChart3 } from 'lucide-react'
+import { Plus, Calendar, Globe, Trash2, Eye, Search, Edit3, ChevronLeft, ChevronRight, Filter, TrendingUp, Users, BarChart3, Check, X } from 'lucide-react'
 import { REGIONS, getRegionName } from '../utils/regions'
 import { formatDate } from '../utils/export'
 import { AnalysisHistoryChart, CompetitorsDistribution } from '../components/Charts'
@@ -16,7 +16,7 @@ const DEMO_ANALYSES = [
     analysis_type: 'manual',
     competitors_count: 5,
     created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    region: 'Санкт-Петербург',
+    region: '2',
     queries: ['Ноутбук Dell XPS'],
     avg_price: 125000,
     lowest_price: 119990,
@@ -29,8 +29,10 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [showNewAnalysisModal, setShowNewAnalysisModal] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
-  const [filterType, setFilterType] = useState('all')
+  const [selectedRegions, setSelectedRegions] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
+  const [showRegionDropdown, setShowRegionDropdown] = useState(false)
+  const regionDropdownRef = useRef(null)
   const { user } = useAuth()
   const { success, error: showError } = useToast()
   const navigate = useNavigate()
@@ -45,6 +47,16 @@ export default function Dashboard() {
       fetchAnalyses()
     }
   }, [isDemo])
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (regionDropdownRef.current && !regionDropdownRef.current.contains(event.target)) {
+        setShowRegionDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   const fetchAnalyses = async () => {
     try {
@@ -67,15 +79,21 @@ export default function Dashboard() {
     }
   }
 
+  // Получаем уникальные регионы из анализов пользователя
+  const availableRegions = useMemo(() => {
+    const regionCodes = [...new Set(analyses.map(a => a.region).filter(Boolean))]
+    return REGIONS.filter(r => regionCodes.includes(r.value))
+  }, [analyses])
+
   const filteredAnalyses = useMemo(() => {
     return analyses.filter(a => {
-      const matchesType = filterType === 'all' || a.analysis_type === filterType
+      const matchesRegion = selectedRegions.length === 0 || selectedRegions.includes(a.region)
       const searchLower = searchQuery.toLowerCase()
       const matchesSearch = !searchQuery ||
         a.name?.toLowerCase().includes(searchLower)
-      return matchesType && matchesSearch
+      return matchesRegion && matchesSearch
     })
-  }, [analyses, filterType, searchQuery])
+  }, [analyses, selectedRegions, searchQuery])
 
   const totalPages = Math.ceil(filteredAnalyses.length / ITEMS_PER_PAGE)
   const paginatedAnalyses = filteredAnalyses.slice(
@@ -85,7 +103,32 @@ export default function Dashboard() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [filterType, searchQuery])
+  }, [selectedRegions, searchQuery])
+
+  const toggleRegion = (regionCode) => {
+    setSelectedRegions(prev => 
+      prev.includes(regionCode) 
+        ? prev.filter(r => r !== regionCode)
+        : [...prev, regionCode]
+    )
+  }
+
+  const clearRegions = () => {
+    setSelectedRegions([])
+  }
+
+  // Формируем отображаемый текст для кнопки фильтра регионов
+  const getRegionFilterText = () => {
+    if (selectedRegions.length === 0) return 'Все регионы'
+    const selectedLabels = selectedRegions.map(code => getRegionName(code))
+    return selectedLabels.join(', ')
+  }
+
+  // Сокращаем текст с троеточием если не помещается
+  const getTruncatedRegionText = (text, maxLength = 40) => {
+    if (text.length <= maxLength) return text
+    return text.substring(0, maxLength - 3) + '...'
+  }
 
   const stats = {
     total: analyses.length,
@@ -209,14 +252,39 @@ export default function Dashboard() {
                 />
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
               </div>
-              <select
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                className="input-field py-1.5 text-sm"
-              >
-                <option value="all">Все типы</option>
-                <option value="manual">Ручные</option>
-              </select>
+              <div className="relative" ref={regionDropdownRef}>
+                <button
+                  onClick={() => setShowRegionDropdown(!showRegionDropdown)}
+                  className="input-field py-1.5 text-sm min-w-[180px] max-w-[300px] truncate flex items-center justify-between"
+                >
+                  <span className="truncate">{getTruncatedRegionText(getRegionFilterText())}</span>
+                  {selectedRegions.length > 0 && (
+                    <X className="h-4 w-4 ml-2 flex-shrink-0" onClick={(e) => { e.stopPropagation(); clearRegions(); }} />
+                  )}
+                </button>
+                {showRegionDropdown && (
+                  <div className="absolute right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto min-w-[200px]">
+                    {availableRegions.length === 0 ? (
+                      <div className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400">Нет доступных регионов</div>
+                    ) : (
+                      availableRegions.map((region) => (
+                        <label
+                          key={region.value}
+                          className="flex items-center px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedRegions.includes(region.value)}
+                            onChange={() => toggleRegion(region.value)}
+                            className="mr-3 h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                          />
+                          <span className="text-sm text-gray-700 dark:text-gray-300">{region.label}</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
