@@ -256,9 +256,9 @@ export default function Dashboard() {
                 <button
                   onClick={() => setShowRegionDropdown(!showRegionDropdown)}
                   className="input-field py-1.5 text-sm flex items-center justify-between overflow-hidden"
-                  style={{ width: '200px', minWidth: '200px' }}
+                  style={{ width: '250px', minWidth: '250px' }}
                 >
-                  <span className="truncate flex-1">{getTruncatedRegionText(getRegionFilterText())}</span>
+                  <span className="truncate">{getTruncatedRegionText(getRegionFilterText())}</span>
                   <div className="flex items-center ml-2 flex-shrink-0">
                     {selectedRegions.length > 0 && (
                       <X className="h-4 w-4 mr-1" onClick={(e) => { e.stopPropagation(); clearRegions(); }} />
@@ -267,7 +267,7 @@ export default function Dashboard() {
                   </div>
                 </button>
                 {showRegionDropdown && (
-                  <div className="absolute right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 min-w-[200px] max-h-[160px] overflow-y-auto">
+                  <div className="absolute right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-250 dark:border-gray-700 rounded-lg shadow-lg z-50 min-w-[250px] max-h-[145px] overflow-y-auto">
                     {availableRegions.length === 0 ? (
                       <div className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400">Нет доступных регионов</div>
                     ) : (
@@ -409,6 +409,7 @@ function NewAnalysisModal({ onClose, onSuccess }) {
   const [analysisName, setAnalysisName] = useState('')
   const [queries, setQueries] = useState('')
   const [positions, setPositions] = useState(5)
+  const [analysesCount, setAnalysesCount] = useState(0)
   const [resultTypes, setResultTypes] = useState(['organic'])
   const [userSite, setUserSite] = useState('')
   const [competitors, setCompetitors] = useState([''])
@@ -421,6 +422,24 @@ function NewAnalysisModal({ onClose, onSuccess }) {
   const [checkResults, setCheckResults] = useState({})
   const [checkingSite, setCheckingSite] = useState(null)
   const { error: showError } = useToast()
+
+
+  // Получаем количество анализов пользователя для автогенерации названия
+  useEffect(() => {
+    const fetchAnalysesCount = async () => {
+      try {
+        const response = await api.get('/analysis')
+        const count = response.data.analyses?.length || 0
+        setAnalysesCount(count)
+        setAnalysisName(`Анализ #${count + 1}`)
+      } catch (error) {
+        console.error('Error fetching analyses count:', error)
+        setAnalysisName('Анализ #1')
+      }
+    }
+    fetchAnalysesCount()
+  }, [])
+
 
   const checkSite = async (site) => {
     if (!site) return
@@ -607,7 +626,7 @@ function NewAnalysisModal({ onClose, onSuccess }) {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Название анализа</label>
             <input
               type="text"
-              value="Анализ #"
+              value={analysisName}
               onChange={(e) => setAnalysisName(e.target.value)}
               className="input-field"
               placeholder="Оставьте пустым для автоматического названия"
@@ -615,7 +634,7 @@ function NewAnalysisModal({ onClose, onSuccess }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ваш сайт (Url до каталога с товарами)</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ваш сайт (URL на каталог с товарами)</label>
             <div className="flex items-center space-x-2">
               <input
                 type="text"
@@ -641,10 +660,10 @@ function NewAnalysisModal({ onClose, onSuccess }) {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Сайт конкурента (URL)</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Сайт конкурента (URL на каталог с товарами)</label>
             {competitors.map((comp, index) => (
               <div key={index} className="flex items-center space-x-2 mb-2">
-                <input type="text" value={comp} onChange={(e) => { const updated = [...competitors]; updated[index] = e.target.value; setCompetitors(updated); }} className="input-field flex-1" placeholder={`Url до каталога конкурентов ${index + 1}`} />
+                <input type="text" value={comp} onChange={(e) => { const updated = [...competitors]; updated[index] = e.target.value; setCompetitors(updated); }} className="input-field flex-1" placeholder={`competitor_${index + 1}.ru/catalog/`} />
                 <button
                   type="button"
                   onClick={() => checkSite(comp)}
@@ -658,7 +677,7 @@ function NewAnalysisModal({ onClose, onSuccess }) {
                     {checkResults[comp].available ? '✅ Доступен' : `❌ ${checkResults[comp].message || 'Нет ответа'}`}
                   </span>
                 )}
-                {competitors.length > 1 && <button type="button" onClick={() => setCompetitors(competitors.filter((_, i) => i !== index))} className="btn-secondary p-2">-</button>}
+                {competitors.length > 1 && <button type="button" onClick={() => setCompetitors(competitors.filter((_, i) => i !== index))} className="btn-secondary p-2"><Trash2 className="h-5 w-5" /></button>}
               </div>
             ))}
             {competitors.length < 3 && <button type="button" onClick={() => setCompetitors([...competitors, ''])} className="text-sm text-primary-600">+ Добавить</button>}
