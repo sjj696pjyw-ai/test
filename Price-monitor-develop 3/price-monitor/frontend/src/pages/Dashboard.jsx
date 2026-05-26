@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import api from '../utils/api'
-import { Plus, Calendar, Globe, Trash2, Eye, Search, Edit3, ChevronLeft, ChevronRight, Filter, TrendingUp, Users, BarChart3, Check, X } from 'lucide-react'
+import { Plus, Calendar, Globe, Trash2, Eye, Search, Edit3, ChevronLeft, ChevronRight, Filter, TrendingUp, Users, BarChart3, Check, X, ChevronDown } from 'lucide-react'
 import { REGIONS, getRegionName } from '../utils/regions'
 import { formatDate } from '../utils/export'
 import { AnalysisHistoryChart, CompetitorsDistribution } from '../components/Charts'
@@ -255,15 +255,18 @@ export default function Dashboard() {
               <div className="relative" ref={regionDropdownRef}>
                 <button
                   onClick={() => setShowRegionDropdown(!showRegionDropdown)}
-                  className="input-field py-1.5 text-sm min-w-[180px] max-w-[300px] truncate flex items-center justify-between"
+                  className="input-field py-1.5 text-sm w-[300px] truncate flex items-center justify-between"
                 >
                   <span className="truncate">{getTruncatedRegionText(getRegionFilterText())}</span>
-                  {selectedRegions.length > 0 && (
-                    <X className="h-4 w-4 ml-2 flex-shrink-0" onClick={(e) => { e.stopPropagation(); clearRegions(); }} />
-                  )}
+                  <div className="flex items-center ml-2 flex-shrink-0">
+                    {selectedRegions.length > 0 && (
+                      <X className="h-4 w-4 mr-1" onClick={(e) => { e.stopPropagation(); clearRegions(); }} />
+                    )}
+                    <ChevronDown className="h-4 w-4" />
+                  </div>
                 </button>
                 {showRegionDropdown && (
-                  <div className={`absolute right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 min-w-[200px] ${availableRegions.length > 4 ? 'max-h-64 overflow-y-auto' : ''}`}>
+                  <div className="absolute right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 min-w-[200px] max-h-64 overflow-y-auto">
                     {availableRegions.length === 0 ? (
                       <div className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400">Нет доступных регионов</div>
                     ) : (
