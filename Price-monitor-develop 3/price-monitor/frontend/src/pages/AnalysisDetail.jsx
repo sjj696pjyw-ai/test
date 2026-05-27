@@ -151,6 +151,7 @@ export default function AnalysisDetail() {
   const [editingDomain, setEditingDomain] = useState('')
   const [editingTitleSelector, setEditingTitleSelector] = useState('')
   const [editingPriceSelector, setEditingPriceSelector] = useState('')
+  const [showHowItWorksModal, setShowHowItWorksModal] = useState(false)
   const { error: showError, success } = useToast()
   const isDemo = location.state?.demo === true
 
@@ -819,13 +820,21 @@ export default function AnalysisDetail() {
               </p>
             </div>
             {linkingMode ? (
-              <button
-                onClick={() => { setLinkingMode(null); setSelectedProduct(null); }}
-                className="btn-secondary flex items-center space-x-2"
-              >
-                <X className="h-4 w-4" />
-                <span>Отмена</span>
-              </button>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setShowHowItWorksModal(true)}
+                  className="btn-secondary flex items-center space-x-2"
+                >
+                  <span>Как это работает?</span>
+                </button>
+                <button
+                  onClick={() => { setLinkingMode(null); setSelectedProduct(null); }}
+                  className="btn-secondary flex items-center space-x-2"
+                >
+                  <X className="h-4 w-4" />
+                  <span>Отмена</span>
+                </button>
+              </div>
             ) : (
               <button
                 onClick={() => setLinkingMode('user')}
@@ -844,7 +853,7 @@ export default function AnalysisDetail() {
                 {userCompetitor?.products?.map(product => (
                   <button
                     key={product.id}
-                    onClick={() => { setSelectedProduct(product); setLinkingMode('competitor'); }}
+                    onClick={() => setSelectedProduct(product)}
                     className={`p-3 text-left rounded-lg border-2 transition-all ${selectedProduct?.id === product.id
                       ? 'border-primary-500 bg-white dark:bg-gray-800'
                       : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600'
@@ -866,7 +875,7 @@ export default function AnalysisDetail() {
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Выберите один товар конкурента:</p>
               <div className="space-y-4 max-h-96 overflow-y-auto">
                 {competitorList.map(competitor => (
-                  competitor.products?.length > 0 && (
+                  !competitor.is_user_site && competitor.products?.length > 0 && (
                     <div key={competitor.id} className="mb-4">
                       <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-2 flex items-center">
                         <a
@@ -924,6 +933,56 @@ export default function AnalysisDetail() {
             </div>
           )}
 
+          {linkingMode && (
+            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="p-4 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
+                <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Ваши товары</h5>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {userCompetitor?.products?.map(product => (
+                    <button
+                      key={product.id}
+                      onClick={() => setSelectedProduct(product)}
+                      className={`w-full p-2 text-left rounded border transition-all ${selectedProduct?.id === product.id
+                        ? 'border-primary-500 bg-white dark:bg-gray-800'
+                        : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600'
+                        }`}
+                    >
+                      <p className="text-sm font-medium truncate text-gray-900 dark:text-gray-100">{product.name}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{formatPrice(product.price)}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Товары конкурентов</h5>
+                <div className="space-y-4 max-h-64 overflow-y-auto">
+                  {competitorList.map(competitor => (
+                    !competitor.is_user_site && competitor.products?.length > 0 && (
+                      <div key={competitor.id} className="mb-2">
+                        <h6 className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{competitor.domain}</h6>
+                        <div className="space-y-1">
+                          {competitor.products.map(product => (
+                            <button
+                              key={product.id}
+                              onClick={() => handleSelectCompetitorProductClick(product.id)}
+                              className={`w-full p-2 text-left rounded border transition-all flex items-center justify-between ${selectedCompetitorProduct === product.id
+                                ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
+                                : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 hover:border-primary-500'
+                                }`}
+                            >
+                              <p className="text-sm font-medium truncate text-gray-900 dark:text-gray-100">{product.name}</p>
+                              <span className="text-xs text-primary-600 dark:text-primary-400 font-semibold">{formatPrice(product.price)}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {selectedProduct && !linkingMode && (
             <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg">
               <p className="text-sm text-yellow-700 dark:text-yellow-300">
@@ -938,45 +997,47 @@ export default function AnalysisDetail() {
             </div>
           )}
 
-          <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Текущие связи ({analysis.product_links?.length || 0})</h4>
-          {analysis.product_links?.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 dark:bg-gray-800">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">Мои товары</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">Товары конкурента</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {analysis.product_links.map(link => (
-                    <tr key={link.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                      <td className="px-4 py-3 align-top">
-                        <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{link.user_product?.name || 'N/A'}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{formatPrice(link.user_product?.price)}</p>
-                      </td>
-                      <td className="px-4 py-3 align-top">
-                        <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{link.competitor_product?.name || 'N/A'}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{formatPrice(link.competitor_product?.price)}</p>
-                      </td>
-                      <td className="px-4 py-3 align-top text-right">
-                        <button
-                          onClick={() => unlinkProducts(link.id)}
-                          className="p-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
-                          title="Удалить связь"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </td>
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-6 mt-6">
+            <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Текущие связи ({analysis.product_links?.length || 0})</h4>
+            {analysis.product_links?.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 dark:bg-gray-800">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">Мои товары</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">Товары конкурента</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700"></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="text-gray-500 dark:text-gray-400">Нет связанных товаров</p>
-          )}
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {analysis.product_links.map(link => (
+                      <tr key={link.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                        <td className="px-4 py-3 align-top">
+                          <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{link.user_product?.name || 'N/A'}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{formatPrice(link.user_product?.price)}</p>
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                          <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{link.competitor_product?.name || 'N/A'}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{formatPrice(link.competitor_product?.price)}</p>
+                        </td>
+                        <td className="px-4 py-3 align-top text-right">
+                          <button
+                            onClick={() => unlinkProducts(link.id)}
+                            className="p-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                            title="Удалить связь"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-gray-500 dark:text-gray-400">Нет связанных товаров</p>
+            )}
+          </div>
         </div>
       )}
 
@@ -1113,6 +1174,75 @@ export default function AnalysisDetail() {
                 className="btn-primary text-sm"
               >
                 Сохранить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* How It Works Modal */}
+      {showHowItWorksModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg max-w-2xl w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Как работает связывание товаров
+              </h3>
+              <button
+                onClick={() => setShowHowItWorksModal(false)}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                <X className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-gray-700 dark:text-gray-300">
+              <div className="flex items-start space-x-3">
+                <div className="w-8 h-8 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-primary-600 dark:text-primary-400 font-semibold text-sm">1</span>
+                </div>
+                <div>
+                  <h4 className="font-medium text-gray-900 dark:text-white mb-1">Выберите ваш товар</h4>
+                  <p className="text-sm">В левой колонке отображаются товары с вашего сайта. Кликните на товар, чтобы выбрать его для связывания.</p>
+                </div>
+              </div>
+
+              <div className="flex items-start space-x-3">
+                <div className="w-8 h-8 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-primary-600 dark:text-primary-400 font-semibold text-sm">2</span>
+                </div>
+                <div>
+                  <h4 className="font-medium text-gray-900 dark:text-white mb-1">Выберите товар конкурента</h4>
+                  <p className="text-sm">В правой колонке отображаются товары конкурентов. Выберите аналогичный товар того же конкурента для создания связи.</p>
+                </div>
+              </div>
+
+              <div className="flex items-start space-x-3">
+                <div className="w-8 h-8 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-primary-600 dark:text-primary-400 font-semibold text-sm">3</span>
+                </div>
+                <div>
+                  <h4 className="font-medium text-gray-900 dark:text-white mb-1">Свяжите товары</h4>
+                  <p className="text-sm">После выбора обоих товаров нажмите кнопку "Связать", чтобы создать связь между ними. Эта связь будет использоваться для сравнения цен в отчёте.</p>
+                </div>
+              </div>
+
+              <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
+                <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">Важно:</h4>
+                <ul className="text-sm space-y-1 text-blue-800 dark:text-blue-200">
+                  <li>• Один товар с вашего сайта можно связать только с одним товаром конкурента</li>
+                  <li>• Связи используются для формирования отчёта по сравнению цен</li>
+                  <li>• Вы можете удалить связь в любое время, нажав на значок корзины в таблице "Текущие связи"</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={() => setShowHowItWorksModal(false)}
+                className="btn-primary"
+              >
+                Понятно
               </button>
             </div>
           </div>
