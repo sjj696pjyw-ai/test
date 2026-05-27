@@ -811,193 +811,96 @@ export default function AnalysisDetail() {
       )}
 
       {activeTab === 'linking' && (
-        <div className="card">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Связывание товаров</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Свяжите ваши товары с товарами конкурентов для формирования отчёта
-              </p>
-            </div>
-            {linkingMode ? (
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setShowHowItWorksModal(true)}
-                  className="btn-secondary flex items-center space-x-2"
-                >
-                  <span>Как это работает?</span>
-                </button>
-                <button
-                  onClick={() => { setLinkingMode(null); setSelectedProduct(null); }}
-                  className="btn-secondary flex items-center space-x-2"
-                >
-                  <X className="h-4 w-4" />
-                  <span>Отмена</span>
-                </button>
+        <div className="space-y-6">
+          {/* Блок связывания товаров */}
+          <div className="card">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Связывание товаров</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Свяжите ваши товары с товарами конкурентов для формирования отчёта
+                </p>
               </div>
-            ) : (
-              <button
-                onClick={() => setLinkingMode('user')}
-                className="btn-primary flex items-center space-x-2"
-              >
-                <LinkIcon className="h-4 w-4" />
-                <span>Связать товары</span>
-              </button>
+              {linkingMode ? (
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setShowHowItWorksModal(true)}
+                    className="btn-secondary flex items-center space-x-2"
+                  >
+                    <span>Как это работает?</span>
+                  </button>
+                  <button
+                    onClick={() => { setLinkingMode(null); setSelectedProduct(null); }}
+                    className="btn-secondary flex items-center space-x-2"
+                  >
+                    <X className="h-4 w-4" />
+                    <span>Отмена</span>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setLinkingMode('user')}
+                  className="btn-primary flex items-center space-x-2"
+                >
+                  <LinkIcon className="h-4 w-4" />
+                  <span>Связать товары</span>
+                </button>
+              )}
+            </div>
+
+            {linkingMode && (
+              <div className="mb-6 space-y-6">
+                <div className="p-4 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
+                  <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Ваши товары</h5>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {userCompetitor?.products?.map(product => (
+                      <button
+                        key={product.id}
+                        onClick={() => setSelectedProduct(product)}
+                        className={`w-full p-2 text-left rounded border transition-all ${selectedProduct?.id === product.id
+                          ? 'border-primary-500 bg-white dark:bg-gray-800'
+                          : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600'
+                          }`}
+                      >
+                        <p className="text-sm font-medium truncate text-gray-900 dark:text-gray-100">{product.name}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{formatPrice(product.price)}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                  <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Товары конкурентов</h5>
+                  <div className="space-y-4 max-h-64 overflow-y-auto">
+                    {competitorList.map(competitor => (
+                      !competitor.is_user_site && competitor.products?.length > 0 && (
+                        <div key={competitor.id} className="mb-2">
+                          <h6 className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{competitor.domain}</h6>
+                          <div className="space-y-1">
+                            {competitor.products.map(product => (
+                              <button
+                                key={product.id}
+                                onClick={() => handleSelectCompetitorProductClick(product.id)}
+                                className={`w-full p-2 text-left rounded border transition-all flex items-center justify-between ${selectedCompetitorProduct === product.id
+                                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
+                                  : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 hover:border-primary-500'
+                                  }`}
+                              >
+                                <p className="text-sm font-medium truncate text-gray-900 dark:text-gray-100">{product.name}</p>
+                                <span className="text-xs text-primary-600 dark:text-primary-400 font-semibold">{formatPrice(product.price)}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    ))}
+                  </div>
+                </div>
+              </div>
             )}
           </div>
 
-          {linkingMode === 'user' && (
-            <div className="mb-6 p-4 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
-              <p className="text-sm text-primary-700 dark:text-primary-300 mb-2">Выберите ваш товар:</p>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                {userCompetitor?.products?.map(product => (
-                  <button
-                    key={product.id}
-                    onClick={() => setSelectedProduct(product)}
-                    className={`p-3 text-left rounded-lg border-2 transition-all ${selectedProduct?.id === product.id
-                      ? 'border-primary-500 bg-white dark:bg-gray-800'
-                      : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600'
-                      }`}
-                  >
-                    <p className="text-sm font-medium truncate text-gray-900 dark:text-gray-100">{product.name}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{formatPrice(product.price)}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {linkingMode === 'competitor' && selectedProduct && (
-            <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
-                Выбранный товар: <strong>{selectedProduct.name}</strong>
-              </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Выберите один товар конкурента:</p>
-              <div className="space-y-4 max-h-96 overflow-y-auto">
-                {competitorList.map(competitor => (
-                  !competitor.is_user_site && competitor.products?.length > 0 && (
-                    <div key={competitor.id} className="mb-4">
-                      <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-2 flex items-center">
-                        <a
-                          href={`https://${competitor.domain.replace(/^https?:\/\//, '')}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary-600 dark:text-primary-400 hover:underline"
-                        >
-                          {competitor.domain}
-                        </a>
-                        <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">({competitor.products.length} товаров)</span>
-                      </h5>
-                      <div className="grid gap-2">
-                        {competitor.products.map(product => (
-                          <button
-                            key={product.id}
-                            onClick={() => handleSelectCompetitorProductClick(product.id)}
-                            className={`p-3 text-left rounded-lg border-2 transition-all flex items-center justify-between w-full ${selectedCompetitorProduct === product.id
-                              ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
-                              : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 hover:border-primary-500'
-                              }`}
-                          >
-                            <div className="flex items-center space-x-3">
-                              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedCompetitorProduct === product.id
-                                ? 'border-primary-500 bg-primary-500'
-                                : 'border-gray-300'
-                                }`}>
-                                {selectedCompetitorProduct === product.id && (
-                                  <Check className="h-3 w-3 text-white" />
-                                )}
-                              </div>
-                              <p className="font-medium text-gray-900 dark:text-gray-100">{product.name}</p>
-                            </div>
-                            <span className="text-primary-600 dark:text-primary-400 font-semibold">{formatPrice(product.price)}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                ))}
-              </div>
-              {selectedCompetitorProduct && (
-                <div className="mt-4 flex items-center justify-between">
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Выбран 1 товар
-                  </p>
-                  <button
-                    onClick={() => handleSelectCompetitorProduct(selectedCompetitorProduct)}
-                    className="btn-primary"
-                  >
-                    Связать
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {linkingMode && (
-            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="p-4 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
-                <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Ваши товары</h5>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {userCompetitor?.products?.map(product => (
-                    <button
-                      key={product.id}
-                      onClick={() => setSelectedProduct(product)}
-                      className={`w-full p-2 text-left rounded border transition-all ${selectedProduct?.id === product.id
-                        ? 'border-primary-500 bg-white dark:bg-gray-800'
-                        : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600'
-                        }`}
-                    >
-                      <p className="text-sm font-medium truncate text-gray-900 dark:text-gray-100">{product.name}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{formatPrice(product.price)}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Товары конкурентов</h5>
-                <div className="space-y-4 max-h-64 overflow-y-auto">
-                  {competitorList.map(competitor => (
-                    !competitor.is_user_site && competitor.products?.length > 0 && (
-                      <div key={competitor.id} className="mb-2">
-                        <h6 className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{competitor.domain}</h6>
-                        <div className="space-y-1">
-                          {competitor.products.map(product => (
-                            <button
-                              key={product.id}
-                              onClick={() => handleSelectCompetitorProductClick(product.id)}
-                              className={`w-full p-2 text-left rounded border transition-all flex items-center justify-between ${selectedCompetitorProduct === product.id
-                                ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
-                                : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 hover:border-primary-500'
-                                }`}
-                            >
-                              <p className="text-sm font-medium truncate text-gray-900 dark:text-gray-100">{product.name}</p>
-                              <span className="text-xs text-primary-600 dark:text-primary-400 font-semibold">{formatPrice(product.price)}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {selectedProduct && !linkingMode && (
-            <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg">
-              <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                Выбран товар: <strong>{selectedProduct.name}</strong> ({formatPrice(selectedProduct.price)})
-              </p>
-              <button
-                onClick={() => setLinkingMode('competitor')}
-                className="btn-primary mt-3"
-              >
-                Выбрать товар конкурента
-              </button>
-            </div>
-          )}
-
-          <div className="border-t border-gray-200 dark:border-gray-700 pt-6 mt-6">
+          {/* Блок текущих связей */}
+          <div className="card">
             <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Текущие связи ({analysis.product_links?.length || 0})</h4>
             {analysis.product_links?.length > 0 ? (
               <div className="overflow-x-auto">
