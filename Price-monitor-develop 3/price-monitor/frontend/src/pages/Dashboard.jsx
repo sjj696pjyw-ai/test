@@ -305,8 +305,12 @@ export default function Dashboard() {
                     <span className="px-2 py-1 text-xs font-medium rounded-full bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300">
                       Ручной
                     </span>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">{analysis.competitors_count} конкурентов</span>
-                  </div>
+                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                      {analysis.competitors_count} {
+                        analysis.competitors_count === 1 ? 'конкурент' :
+                          'конкурентов'
+                      }
+                    </span>                  </div>
                   <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2 truncate max-w-md">
                     {analysis.name || `Анализ #${analysis.id}`}
                   </h3>
@@ -519,6 +523,12 @@ function NewAnalysisModal({ onClose, onSuccess }) {
     e.preventDefault()
     setError('')
 
+    const filledCompetitors = competitors.filter(c => c.trim())
+    if (filledCompetitors.length === 0) {
+      showError('Укажите хотя бы одного конкурента для создания анализа')
+      return
+    }
+
     // Проверяем, не являются ли введенные сайты исключенными
     const sitesToCheck = []
     if (userSite) sitesToCheck.push(userSite)
@@ -580,7 +590,10 @@ function NewAnalysisModal({ onClose, onSuccess }) {
   }
 
   const handleConfirmCompetitors = async () => {
-    if (selectedCompetitors.length === 0) return
+    if (selectedCompetitors.length === 0) {
+      showError('Выберите хотя бы одного конкурента для создания анализа')
+      return
+    }
     setLoading(true)
     try {
       await api.post(`/analysis/${analysisId}/select-competitors`, {
@@ -691,7 +704,7 @@ function NewAnalysisModal({ onClose, onSuccess }) {
                 {competitors.length > 1 && <button type="button" onClick={() => setCompetitors(competitors.filter((_, i) => i !== index))} className="btn-secondary p-2"><Trash2 className="h-5 w-5" /></button>}
               </div>
             ))}
-            {competitors.length < 3 && <button type="button" onClick={() => setCompetitors([...competitors, ''])} className="text-sm text-primary-600">+ Добавить</button>}
+            {competitors.length < 3 && <button type="button" onClick={() => setCompetitors([...competitors, ''])} className="text-sm text-primary-600">+ Добавить конкурента</button>}
           </div>
 
           {showCompetitorSelection ? (
