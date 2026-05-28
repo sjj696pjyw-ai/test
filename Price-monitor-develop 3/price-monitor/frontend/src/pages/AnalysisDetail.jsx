@@ -158,6 +158,8 @@ export default function AnalysisDetail() {
   const isDemo = location.state?.demo === true
   const USER_PRODUCTS_PER_PAGE = 5
   const COMPETITOR_PRODUCTS_PER_PAGE = 5
+  const [userProductSearch, setUserProductSearch] = useState('')
+  const [competitorProductSearch, setCompetitorProductSearch] = useState({})
 
   useEffect(() => {
     fetchAnalysis()
@@ -374,6 +376,8 @@ export default function AnalysisDetail() {
       setLinkingMode(null)
       setSelectedProduct(null)
       setSelectedCompetitorProduct(null)
+      setUserProductSearch('')
+      setCompetitorProductSearch({})
     } catch (error) {
       console.error('Error linking products:', error)
     }
@@ -391,6 +395,8 @@ export default function AnalysisDetail() {
       setLinkingMode(null)
       setSelectedProduct(null)
       setSelectedCompetitorProduct(null)
+      setUserProductSearch('')
+      setCompetitorProductSearch({})
     } catch (error) {
       console.error('Error linking products:', error)
     }
@@ -449,6 +455,9 @@ export default function AnalysisDetail() {
       await fetchAnalysis()
       setSelectedProduct(null)
       setSelectedCompetitorProduct(null)
+      setUserProductSearch('')
+      setCompetitorProductSearch({})
+      setLinkingMode(null)
       success('Товары успешно связаны')
     } catch (error) {
       console.error('Error linking products:', error)
@@ -457,7 +466,13 @@ export default function AnalysisDetail() {
   }
 
   const getUserProductsPage = () => {
-    const products = userCompetitor?.products || []
+    let products = userCompetitor?.products || []
+    // Фильтрация по поиску
+    if (userProductSearch.trim()) {
+      products = products.filter(p => 
+        p.name.toLowerCase().includes(userProductSearch.toLowerCase())
+      )
+    }
     const totalPages = Math.ceil(products.length / USER_PRODUCTS_PER_PAGE)
     const currentPage = Math.min(userProductsPage, totalPages - 1)
     const start = currentPage * USER_PRODUCTS_PER_PAGE
@@ -471,7 +486,13 @@ export default function AnalysisDetail() {
 
   const getCompetitorProductsPage = (competitorId) => {
     const competitor = competitorList.find(c => c.id === competitorId)
-    const products = competitor?.products || []
+    let products = competitor?.products || []
+    // Фильтрация по поиску
+    if (competitorProductSearch[competitorId]?.trim()) {
+      products = products.filter(p => 
+        p.name.toLowerCase().includes(competitorProductSearch[competitorId].toLowerCase())
+      )
+    }
     const currentPage = competitorProductsPages[competitorId] || 0
     const totalPages = Math.ceil(products.length / COMPETITOR_PRODUCTS_PER_PAGE)
     const safePage = Math.min(currentPage, Math.max(0, totalPages - 1))
@@ -906,7 +927,13 @@ export default function AnalysisDetail() {
                     <span>Как это работает?</span>
                   </button>
                   <button
-                    onClick={() => { setLinkingMode(null); setSelectedProduct(null); setSelectedCompetitorProduct(null); }}
+                    onClick={() => { 
+                      setLinkingMode(null); 
+                      setSelectedProduct(null); 
+                      setSelectedCompetitorProduct(null);
+                      setUserProductSearch('');
+                      setCompetitorProductSearch({});
+                    }}
                     className="btn-secondary flex items-center space-x-2"
                   >
                     <X className="h-4 w-4" />
@@ -928,6 +955,15 @@ export default function AnalysisDetail() {
               <div className="mb-6 space-y-6">
                 <div className="p-4 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
                   <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Ваши товары</h5>
+                  <div className="mb-3">
+                    <input
+                      type="text"
+                      placeholder="Поиск по названию товара..."
+                      value={userProductSearch}
+                      onChange={(e) => setUserProductSearch(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
                   <div className="space-y-2">
                     {getUserProductsPage().products.map(product => (
                       <button
@@ -976,6 +1012,18 @@ export default function AnalysisDetail() {
                               {competitor.products.length} товаров
                             </span>
                           </h6>
+                          <div className="mb-2">
+                            <input
+                              type="text"
+                              placeholder={`Поиск в ${competitor.domain}...`}
+                              value={competitorProductSearch[competitor.id] || ''}
+                              onChange={(e) => setCompetitorProductSearch(prev => ({
+                                ...prev,
+                                [competitor.id]: e.target.value
+                              }))}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            />
+                          </div>
                           <div className="space-y-1">
                             {getCompetitorProductsPage(competitor.id).products.map(product => (
                               <button
