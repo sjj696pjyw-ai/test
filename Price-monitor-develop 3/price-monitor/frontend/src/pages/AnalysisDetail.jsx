@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useLocation } from 'react-router-dom'
 import api from '../utils/api'
-import { ArrowLeft, Download, Table, Link as LinkIcon, X, Check, Settings, Trash2, Edit3, Save, XCircle, RefreshCw, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Download, Table, Link as LinkIcon, X, Check, Settings, Trash2, Edit3, Save, XCircle, RefreshCw, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react'
 import { getRegionName } from '../utils/regions'
 import { exportToExcel, exportToCSV, formatPrice, formatDate } from '../utils/export'
 import { PriceComparisonChart, PriceDifferenceChart } from '../components/Charts'
@@ -151,9 +151,13 @@ export default function AnalysisDetail() {
   const [editingDomain, setEditingDomain] = useState('')
   const [editingTitleSelector, setEditingTitleSelector] = useState('')
   const [editingPriceSelector, setEditingPriceSelector] = useState('')
+  const [userProductsPage, setUserProductsPage] = useState(0)
+  const [competitorProductsPages, setCompetitorProductsPages] = useState({})
   const [showHowItWorksModal, setShowHowItWorksModal] = useState(false)
   const { error: showError, success } = useToast()
   const isDemo = location.state?.demo === true
+  const USER_PRODUCTS_PER_PAGE = 5
+  const COMPETITOR_PRODUCTS_PER_PAGE = 5
 
   useEffect(() => {
     fetchAnalysis()
@@ -429,6 +433,71 @@ export default function AnalysisDetail() {
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
     )
+  }
+
+  const handleLinkAllSelected = async () => {
+    if (!selectedProduct || !selectedCompetitorProduct) {
+      showError('Выберите товары для связывания')
+      return
+    }
+    try {
+      await api.post('/analysis/link', {
+        analysis_id: parseInt(id),
+        user_product_id: selectedProduct.id,
+        competitor_product_id: selectedCompetitorProduct
+      })
+      await fetchAnalysis()
+      setSelectedProduct(null)
+      setSelectedCompetitorProduct(null)
+      success('Товары успешно связаны')
+    } catch (error) {
+      console.error('Error linking products:', error)
+      showError('Ошибка при связывании товаров')
+    }
+  }
+
+  const getUserProductsPage = () => {
+    const products = userCompetitor?.products || []
+    const totalPages = Math.ceil(products.length / USER_PRODUCTS_PER_PAGE)
+    const currentPage = Math.min(userProductsPage, totalPages - 1)
+    const start = currentPage * USER_PRODUCTS_PER_PAGE
+    const end = start + USER_PRODUCTS_PER_PAGE
+    return {
+      products: products.slice(start, end),
+      currentPage,
+      totalPages
+    }
+  }
+
+  const getCompetitorProductsPage = (competitorId) => {
+    const competitor = competitorList.find(c => c.id === competitorId)
+    const products = competitor?.products || []
+    const currentPage = competitorProductsPages[competitorId] || 0
+    const totalPages = Math.ceil(products.length / COMPETITOR_PRODUCTS_PER_PAGE)
+    const safePage = Math.min(currentPage, Math.max(0, totalPages - 1))
+    const start = safePage * COMPETITOR_PRODUCTS_PER_PAGE
+    const end = start + COMPETITOR_PRODUCTS_PER_PAGE
+    return {
+      products: products.slice(start, end),
+      currentPage: safePage,
+      totalPages
+    }
+  }
+
+  const handleUserProductPageChange = (newPage) => {
+    const products = userCompetitor?.products || []
+    const totalPages = Math.ceil(products.length / USER_PRODUCTS_PER_PAGE)
+    setUserProductsPage(Math.max(0, Math.min(newPage, totalPages - 1)))
+  }
+
+  const handleCompetitorProductPageChange = (competitorId, newPage) => {
+    const competitor = competitorList.find(c => c.id === competitorId)
+    const products = competitor?.products || []
+    const totalPages = Math.ceil(products.length / COMPETITOR_PRODUCTS_PER_PAGE)
+    setCompetitorProductsPages(prev => ({
+      ...prev,
+      [competitorId]: Math.max(0, Math.min(newPage, totalPages - 1))
+    }))
   }
 
   if (!analysis) {
@@ -824,17 +893,24 @@ export default function AnalysisDetail() {
               {linkingMode ? (
                 <div className="flex items-center space-x-2">
                   <button
+                    onClick={handleLinkAllSelected}
+                    className="btn-primary flex items-center space-x-2"
+                  >
+                    <Check className="h-4 w-4" />
+                    <span>Связать</span>
+                  </button>
+                  <button
                     onClick={() => setShowHowItWorksModal(true)}
                     className="btn-secondary flex items-center space-x-2"
                   >
                     <span>Как это работает?</span>
                   </button>
                   <button
-                    onClick={() => { setLinkingMode(null); setSelectedProduct(null); }}
+                    onClick={() => { setLinkingMode(null); setSelectedProduct(null); setSelectedCompetitorProduct(null); }}
                     className="btn-secondary flex items-center space-x-2"
                   >
                     <X className="h-4 w-4" />
-                    <span>Отмена</span>
+                    <span>Закрыть</span>
                   </button>
                 </div>
               ) : (
@@ -852,31 +928,56 @@ export default function AnalysisDetail() {
               <div className="mb-6 space-y-6">
                 <div className="p-4 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
                   <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Ваши товары</h5>
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {userCompetitor?.products?.map(product => (
+                  <div className="space-y-2">
+                    {getUserProductsPage().products.map(product => (
                       <button
                         key={product.id}
                         onClick={() => setSelectedProduct(product)}
-                        className={`w-full p-2 text-left rounded border transition-all ${selectedProduct?.id === product.id
+                        className={`w-full p-2 text-left rounded border transition-all flex items-center justify-between ${selectedProduct?.id === product.id
                           ? 'border-primary-500 bg-white dark:bg-gray-800'
                           : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600'
                           }`}
                       >
                         <p className="text-sm font-medium truncate text-gray-900 dark:text-gray-100">{product.name}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{formatPrice(product.price)}</p>
-                      </button>
+                        <span className="text-xs text-primary-600 dark:text-primary-400 font-semibold">{formatPrice(product.price)}</span>                      </button>
                     ))}
                   </div>
+                  {getUserProductsPage().totalPages > 1 && (
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                      <button
+                        onClick={() => handleUserProductPageChange(getUserProductsPage().currentPage - 1)}
+                        disabled={getUserProductsPage().currentPage === 0}
+                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      <span className="text-sm text-gray-600 dark:text-gray-400">
+                        Страница {getUserProductsPage().currentPage + 1} из {getUserProductsPage().totalPages}
+                      </span>
+                      <button
+                        onClick={() => handleUserProductPageChange(getUserProductsPage().currentPage + 1)}
+                        disabled={getUserProductsPage().currentPage >= getUserProductsPage().totalPages - 1}
+                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                   <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Товары конкурентов</h5>
-                  <div className="space-y-4 max-h-64 overflow-y-auto">
-                    {competitorList.map(competitor => (
+                  <div className="space-y-4">
+                    {competitorList.slice(0, 3).map(competitor => (
                       !competitor.is_user_site && competitor.products?.length > 0 && (
-                        <div key={competitor.id} className="mb-2">
-                          <h6 className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{competitor.domain}</h6>
+                        <div key={competitor.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                          <h6 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center justify-between">
+                            <span>{competitor.domain}</span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              {competitor.products.length} товаров
+                            </span>
+                          </h6>
                           <div className="space-y-1">
-                            {competitor.products.map(product => (
+                            {getCompetitorProductsPage(competitor.id).products.map(product => (
                               <button
                                 key={product.id}
                                 onClick={() => handleSelectCompetitorProductClick(product.id)}
@@ -890,6 +991,27 @@ export default function AnalysisDetail() {
                               </button>
                             ))}
                           </div>
+                          {getCompetitorProductsPage(competitor.id).totalPages > 1 && (
+                            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                              <button
+                                onClick={() => handleCompetitorProductPageChange(competitor.id, getCompetitorProductsPage(competitor.id).currentPage - 1)}
+                                disabled={getCompetitorProductsPage(competitor.id).currentPage === 0}
+                                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                <ChevronLeft className="h-4 w-4" />
+                              </button>
+                              <span className="text-xs text-gray-600 dark:text-gray-400">
+                                Страница {getCompetitorProductsPage(competitor.id).currentPage + 1} из {getCompetitorProductsPage(competitor.id).totalPages}
+                              </span>
+                              <button
+                                onClick={() => handleCompetitorProductPageChange(competitor.id, getCompetitorProductsPage(competitor.id).currentPage + 1)}
+                                disabled={getCompetitorProductsPage(competitor.id).currentPage >= getCompetitorProductsPage(competitor.id).totalPages - 1}
+                                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                <ChevronRight className="h-4 w-4" />
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )
                     ))}
@@ -1106,7 +1228,7 @@ export default function AnalysisDetail() {
                 </div>
                 <div>
                   <h4 className="font-medium text-gray-900 dark:text-white mb-1">Выберите ваш товар</h4>
-                  <p className="text-sm">В левой колонке отображаются товары с вашего сайта. Кликните на товар, чтобы выбрать его для связывания.</p>
+                  <p className="text-sm">В первом блоке отображаются товары с вашего сайта. Кликните на товар, чтобы выбрать его для связывания.</p>
                 </div>
               </div>
 
@@ -1116,7 +1238,7 @@ export default function AnalysisDetail() {
                 </div>
                 <div>
                   <h4 className="font-medium text-gray-900 dark:text-white mb-1">Выберите товар конкурента</h4>
-                  <p className="text-sm">В правой колонке отображаются товары конкурентов. Выберите аналогичный товар того же конкурента для создания связи.</p>
+                  <p className="text-sm">В нижних блоках показаны товары конкурентов. Выберите аналогичный товар конкурента для создания связи.</p>
                 </div>
               </div>
 
