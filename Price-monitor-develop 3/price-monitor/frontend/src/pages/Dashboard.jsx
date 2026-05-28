@@ -308,7 +308,7 @@ export default function Dashboard() {
                     <span className="text-sm text-gray-500 dark:text-gray-400">
                       {analysis.competitors_count} {
                         analysis.competitors_count === 1 ? 'конкурент' :
-                          'конкурентов'
+                          'конкурента'
                       }
                     </span>                  </div>
                   <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2 truncate max-w-md">

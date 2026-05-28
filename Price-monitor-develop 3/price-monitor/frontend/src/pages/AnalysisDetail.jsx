@@ -469,7 +469,7 @@ export default function AnalysisDetail() {
     let products = userCompetitor?.products || []
     // Фильтрация по поиску
     if (userProductSearch.trim()) {
-      products = products.filter(p => 
+      products = products.filter(p =>
         p.name.toLowerCase().includes(userProductSearch.toLowerCase())
       )
     }
@@ -489,7 +489,7 @@ export default function AnalysisDetail() {
     let products = competitor?.products || []
     // Фильтрация по поиску
     if (competitorProductSearch[competitorId]?.trim()) {
-      products = products.filter(p => 
+      products = products.filter(p =>
         p.name.toLowerCase().includes(competitorProductSearch[competitorId].toLowerCase())
       )
     }
@@ -904,7 +904,7 @@ export default function AnalysisDetail() {
         <div className="space-y-6">
           {/* Блок связывания товаров */}
           <div className="card">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Связывание товаров</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -912,7 +912,7 @@ export default function AnalysisDetail() {
                 </p>
               </div>
               {linkingMode ? (
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2 mb-8">
                   <button
                     onClick={handleLinkAllSelected}
                     className="btn-primary flex items-center space-x-2"
@@ -927,9 +927,9 @@ export default function AnalysisDetail() {
                     <span>Как это работает?</span>
                   </button>
                   <button
-                    onClick={() => { 
-                      setLinkingMode(null); 
-                      setSelectedProduct(null); 
+                    onClick={() => {
+                      setLinkingMode(null);
+                      setSelectedProduct(null);
                       setSelectedCompetitorProduct(null);
                       setUserProductSearch('');
                       setCompetitorProductSearch({});
@@ -1009,13 +1009,16 @@ export default function AnalysisDetail() {
                           <h6 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center justify-between">
                             <span>{competitor.domain}</span>
                             <span className="text-xs text-gray-500 dark:text-gray-400">
-                              {competitor.products.length} товаров
+                              {competitor.products.length} {
+                                competitor.products.length === 1 ? 'товар' :
+                                  'товаров'
+                              }
                             </span>
                           </h6>
                           <div className="mb-2">
                             <input
                               type="text"
-                              placeholder={`Поиск в ${competitor.domain}...`}
+                              placeholder={`Поиск по названию товара...`}
                               value={competitorProductSearch[competitor.id] || ''}
                               onChange={(e) => setCompetitorProductSearch(prev => ({
                                 ...prev,
