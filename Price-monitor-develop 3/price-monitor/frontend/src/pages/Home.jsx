@@ -74,7 +74,7 @@ export default function Home() {
                       </div>
                     </div>
                     <div className="h-10 rounded-lg bg-green-500/10 dark:bg-green-500/20 border border-green-400/30 dark:border-green-400/20 flex items-center justify-center">
-                      <span className="text-xs text-green-700 dark:text-green-300">Цены собраны: 1 234 товара</span>
+                      <span className="text-xs text-green-700 dark:text-green-300">Цены собраны: 10 товаров</span>
                     </div>
                   </div>
                 </div>
