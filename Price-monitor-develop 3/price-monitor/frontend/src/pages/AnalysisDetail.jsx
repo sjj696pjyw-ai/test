@@ -140,7 +140,9 @@ export default function AnalysisDetail() {
   const [activeTab, setActiveTab] = useState('report')
   const [linkingMode, setLinkingMode] = useState(null)
   const [selectedProduct, setSelectedProduct] = useState(null)
-  const [selectedCompetitorProduct, setSelectedCompetitorProduct] = useState(null)
+  // Карта выбранных товаров конкурентов: { [competitorId]: productId }
+  // Позволяет связать свой товар с одним товаром у каждого конкурента
+  const [selectedCompetitorProducts, setSelectedCompetitorProducts] = useState({})
   const [userSiteUrl, setUserSiteUrl] = useState('')
   const [userSiteStatus, setUserSiteStatus] = useState(null)
   const [isEditingName, setIsEditingName] = useState(false)
@@ -375,7 +377,7 @@ export default function AnalysisDetail() {
       await fetchAnalysis()
       setLinkingMode(null)
       setSelectedProduct(null)
-      setSelectedCompetitorProduct(null)
+      setSelectedCompetitorProducts({})
       setUserProductSearch('')
       setCompetitorProductSearch({})
     } catch (error) {
@@ -394,7 +396,7 @@ export default function AnalysisDetail() {
       await fetchAnalysis()
       setLinkingMode(null)
       setSelectedProduct(null)
-      setSelectedCompetitorProduct(null)
+      setSelectedCompetitorProducts({})
       setUserProductSearch('')
       setCompetitorProductSearch({})
     } catch (error) {
@@ -425,12 +427,17 @@ export default function AnalysisDetail() {
     }
   }
 
-  const handleSelectCompetitorProductClick = (productId) => {
-    if (selectedCompetitorProduct === productId) {
-      setSelectedCompetitorProduct(null)
-    } else {
-      setSelectedCompetitorProduct(productId)
-    }
+  const handleSelectCompetitorProductClick = (competitorId, productId) => {
+    setSelectedCompetitorProducts(prev => {
+      // Повторный клик по тому же товару — снять выбор у этого конкурента
+      if (prev[competitorId] === productId) {
+        const next = { ...prev }
+        delete next[competitorId]
+        return next
+      }
+      // Иначе выбрать товар — по одному на каждого конкурента
+      return { ...prev, [competitorId]: productId }
+    })
   }
 
   if (loading) {
@@ -442,23 +449,34 @@ export default function AnalysisDetail() {
   }
 
   const handleLinkAllSelected = async () => {
-    if (!selectedProduct || !selectedCompetitorProduct) {
+    // Собираем выбранные товары конкурентов (по одному на каждого конкурента)
+    const competitorProductIds = Object.values(selectedCompetitorProducts)
+    if (!selectedProduct || competitorProductIds.length === 0) {
       showError('Выберите товары для связывания')
       return
     }
     try {
-      await api.post('/analysis/link', {
-        analysis_id: parseInt(id),
-        user_product_id: selectedProduct.id,
-        competitor_product_id: selectedCompetitorProduct
-      })
+      // Связываем свой товар с выбранным товаром у каждого конкурента
+      await Promise.all(
+        competitorProductIds.map(competitorProductId =>
+          api.post('/analysis/link', {
+            analysis_id: parseInt(id),
+            user_product_id: selectedProduct.id,
+            competitor_product_id: competitorProductId
+          })
+        )
+      )
       await fetchAnalysis()
       setSelectedProduct(null)
-      setSelectedCompetitorProduct(null)
+      setSelectedCompetitorProducts({})
       setUserProductSearch('')
       setCompetitorProductSearch({})
       setLinkingMode(null)
-      success('Товары успешно связаны')
+      success(
+        competitorProductIds.length === 1
+          ? 'Товары успешно связаны'
+          : `Товар связан с ${competitorProductIds.length} конкурентами`
+      )
     } catch (error) {
       console.error('Error linking products:', error)
       showError('Ошибка при связывании товаров')
@@ -532,6 +550,14 @@ export default function AnalysisDetail() {
 
   const userCompetitor = analysis.competitors?.find(c => c.is_user_site)
   const competitorList = analysis.competitors?.filter(c => !c.is_user_site) || []
+
+  // Уже связанные товары — подсвечиваются и недоступны для повторного выбора
+  const linkedUserProductIds = new Set(
+    (analysis.product_links || []).map(link => link.user_product?.id).filter(Boolean)
+  )
+  const linkedCompetitorProductIds = new Set(
+    (analysis.product_links || []).map(link => link.competitor_product?.id).filter(Boolean)
+  )
 
   const chartData = analysis.product_links?.map(link => ({
     competitor: link.competitor_product?.name,
@@ -930,7 +956,7 @@ export default function AnalysisDetail() {
                     onClick={() => {
                       setLinkingMode(null);
                       setSelectedProduct(null);
-                      setSelectedCompetitorProduct(null);
+                      setSelectedCompetitorProducts({});
                       setUserProductSearch('');
                       setCompetitorProductSearch({});
                     }}
@@ -965,21 +991,38 @@ export default function AnalysisDetail() {
                     />
                   </div>
                   <div className="space-y-2">
-                    {getUserProductsPage().products.map(product => (
-                      <button
-                        key={product.id}
-                        onClick={() => setSelectedProduct(product)}
-                        className={`w-full p-2 text-left rounded border transition-all flex items-center justify-between ${selectedProduct?.id === product.id
-                          ? 'border-primary-500 bg-white dark:bg-gray-800'
-                          : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600'
-                          }`}
-                      >
-                        <p className="text-sm font-medium truncate text-gray-900 dark:text-gray-100">{product.name}</p>
-                        <span className="text-xs text-primary-600 dark:text-primary-400 font-semibold">{formatPrice(product.price)}</span>                      </button>
-                    ))}
+                    {getUserProductsPage().products.map(product => {
+                      const isLinked = linkedUserProductIds.has(product.id)
+                      return (
+                        <button
+                          key={product.id}
+                          onClick={() => !isLinked && setSelectedProduct(product)}
+                          disabled={isLinked}
+                          className={`w-full p-2 text-left rounded border transition-all flex items-center justify-between ${isLinked
+                            ? 'border-green-500 bg-green-50 dark:bg-green-900/20 cursor-not-allowed opacity-70'
+                            : selectedProduct?.id === product.id
+                              ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
+                              : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600'
+                            }`}
+                        >
+                          <p className="text-sm font-medium truncate text-gray-900 dark:text-gray-100">{product.name}</p>
+                          <span className="flex items-center gap-2 shrink-0">
+                            {isLinked && (
+                              <span className="text-xs text-green-600 dark:text-green-400 font-medium flex items-center gap-1">
+                                <Check className="h-3 w-3" />Связан
+                              </span>
+                            )}
+                            <span className="text-xs text-primary-600 dark:text-primary-400 font-semibold">{formatPrice(product.price)}</span>
+                          </span>
+                        </button>
+                      )
+                    })}
                   </div>
                   {getUserProductsPage().totalPages > 1 && (
-                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">
+                        Страница {getUserProductsPage().currentPage + 1} из {getUserProductsPage().totalPages}
+                      </span>
                       <button
                         onClick={() => handleUserProductPageChange(getUserProductsPage().currentPage - 1)}
                         disabled={getUserProductsPage().currentPage === 0}
@@ -987,9 +1030,6 @@ export default function AnalysisDetail() {
                       >
                         <ChevronLeft className="h-4 w-4" />
                       </button>
-                      <span className="text-sm text-gray-600 dark:text-gray-400">
-                        Страница {getUserProductsPage().currentPage + 1} из {getUserProductsPage().totalPages}
-                      </span>
                       <button
                         onClick={() => handleUserProductPageChange(getUserProductsPage().currentPage + 1)}
                         disabled={getUserProductsPage().currentPage >= getUserProductsPage().totalPages - 1}
@@ -1028,22 +1068,39 @@ export default function AnalysisDetail() {
                             />
                           </div>
                           <div className="space-y-1">
-                            {getCompetitorProductsPage(competitor.id).products.map(product => (
-                              <button
-                                key={product.id}
-                                onClick={() => handleSelectCompetitorProductClick(product.id)}
-                                className={`w-full p-2 text-left rounded border transition-all flex items-center justify-between ${selectedCompetitorProduct === product.id
-                                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
-                                  : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 hover:border-primary-500'
-                                  }`}
-                              >
-                                <p className="text-sm font-medium truncate text-gray-900 dark:text-gray-100">{product.name}</p>
-                                <span className="text-xs text-primary-600 dark:text-primary-400 font-semibold">{formatPrice(product.price)}</span>
-                              </button>
-                            ))}
+                            {getCompetitorProductsPage(competitor.id).products.map(product => {
+                              const isLinked = linkedCompetitorProductIds.has(product.id)
+                              const isSelected = selectedCompetitorProducts[competitor.id] === product.id
+                              return (
+                                <button
+                                  key={product.id}
+                                  onClick={() => !isLinked && handleSelectCompetitorProductClick(competitor.id, product.id)}
+                                  disabled={isLinked}
+                                  className={`w-full p-2 text-left rounded border transition-all flex items-center justify-between ${isLinked
+                                    ? 'border-green-500 bg-green-50 dark:bg-green-900/20 cursor-not-allowed opacity-70'
+                                    : isSelected
+                                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
+                                      : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 hover:border-primary-500'
+                                    }`}
+                                >
+                                  <p className="text-sm font-medium truncate text-gray-900 dark:text-gray-100">{product.name}</p>
+                                  <span className="flex items-center gap-2 shrink-0">
+                                    {isLinked && (
+                                      <span className="text-xs text-green-600 dark:text-green-400 font-medium flex items-center gap-1">
+                                        <Check className="h-3 w-3" />Связан
+                                      </span>
+                                    )}
+                                    <span className="text-xs text-primary-600 dark:text-primary-400 font-semibold">{formatPrice(product.price)}</span>
+                                  </span>
+                                </button>
+                              )
+                            })}
                           </div>
                           {getCompetitorProductsPage(competitor.id).totalPages > 1 && (
-                            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                              <span className="text-xs text-gray-600 dark:text-gray-400">
+                                Страница {getCompetitorProductsPage(competitor.id).currentPage + 1} из {getCompetitorProductsPage(competitor.id).totalPages}
+                              </span>
                               <button
                                 onClick={() => handleCompetitorProductPageChange(competitor.id, getCompetitorProductsPage(competitor.id).currentPage - 1)}
                                 disabled={getCompetitorProductsPage(competitor.id).currentPage === 0}
@@ -1051,9 +1108,6 @@ export default function AnalysisDetail() {
                               >
                                 <ChevronLeft className="h-4 w-4" />
                               </button>
-                              <span className="text-xs text-gray-600 dark:text-gray-400">
-                                Страница {getCompetitorProductsPage(competitor.id).currentPage + 1} из {getCompetitorProductsPage(competitor.id).totalPages}
-                              </span>
                               <button
                                 onClick={() => handleCompetitorProductPageChange(competitor.id, getCompetitorProductsPage(competitor.id).currentPage + 1)}
                                 disabled={getCompetitorProductsPage(competitor.id).currentPage >= getCompetitorProductsPage(competitor.id).totalPages - 1}
