@@ -1,4 +1,4 @@
-from ..models import db, Analysis, Competitor, Product, ProductLink
+from ..models import db, Analysis, Competitor, Product, ProductLink, PriceHistory
 from ..utils import SiteParser, is_excluded_domain
 from config.region_config import REGION_CITIES, REGION_ALIASES, adapt_query_to_city
 
@@ -32,11 +32,16 @@ class AnalysisService:
     @staticmethod
     def delete_analysis(analysis_id, user_id):
         analysis = Analysis.query.filter_by(id=analysis_id, user_id=user_id).first()
-        if analysis:
+        if not analysis:
+            return False
+        try:
             db.session.delete(analysis)
             db.session.commit()
             return True
-        return False
+        except Exception as e:
+            db.session.rollback()
+            print(f"[ERROR] Failed to delete analysis {analysis_id}: {e}")
+            return False
 
     @staticmethod
     def update_analysis_name(analysis_id, user_id, name):
@@ -217,17 +222,48 @@ class SiteParsingService:
         if competitor:
             competitor.title_selector = title_selector
             competitor.price_selector = price_selector
-        
+            # Указанная ссылка становится текущим сайтом (заменяет прежнюю)
+            if url:
+                competitor.domain = url
+
+        # Обновляем существующие товары по имени на месте, а не создаём дубли.
+        # Иначе связи (ProductLink) продолжают указывать на старый товар со
+        # старой ценой, и в сводном отчёте/графике цена моих товаров не меняется.
+        existing = {
+            p.name.strip().lower(): p
+            for p in Product.query.filter_by(competitor_id=competitor_id).all()
+        }
+
         saved_products = []
         for prod in products:
-            product = ProductService.add_product(
-                competitor_id=competitor_id,
-                name=prod['name'],
-                price=prod['price'],
-                currency=prod.get('currency', 'RUB')
-            )
+            name = prod['name'].strip()
+            key = name.lower()
+            new_price = prod['price']
+
+            if key in existing:
+                product = existing[key]
+                old_price = product.price
+                if old_price != new_price:
+                    # Фиксируем прежнюю цену в истории и обновляем текущую
+                    db.session.add(PriceHistory(
+                        product_id=product.id,
+                        price=old_price,
+                        currency=product.currency
+                    ))
+                    product.price = new_price
+            else:
+                product = Product(
+                    competitor_id=competitor_id,
+                    name=name,
+                    price=new_price,
+                    currency=prod.get('currency', 'RUB')
+                )
+                db.session.add(product)
+
             saved_products.append(product)
-        
+
+        db.session.commit()
+
         return saved_products
 
     @staticmethod

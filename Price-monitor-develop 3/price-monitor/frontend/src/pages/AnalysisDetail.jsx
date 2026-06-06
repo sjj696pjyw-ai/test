@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useLocation } from 'react-router-dom'
 import api from '../utils/api'
-import { ArrowLeft, Download, Table, Link as LinkIcon, X, Check, Settings, Trash2, Edit3, Save, XCircle, RefreshCw, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Download, Table, Link as LinkIcon, X, Check, Settings, Trash2, Edit3, Save, XCircle, RefreshCw, ExternalLink, ChevronLeft, ChevronRight, HelpCircle } from 'lucide-react'
 import { getRegionName } from '../utils/regions'
 import { exportToExcel, exportToCSV, formatPrice, formatDate } from '../utils/export'
 import { PriceComparisonChart, PriceDifferenceChart } from '../components/Charts'
@@ -162,6 +162,8 @@ export default function AnalysisDetail() {
   const COMPETITOR_PRODUCTS_PER_PAGE = 5
   const [userProductSearch, setUserProductSearch] = useState('')
   const [competitorProductSearch, setCompetitorProductSearch] = useState({})
+  // Фильтр сводного отчёта — синхронизируется с фильтром товаров у графика
+  const [reportProductFilter, setReportProductFilter] = useState(null)
 
   useEffect(() => {
     fetchAnalysis()
@@ -214,9 +216,13 @@ export default function AnalysisDetail() {
           success('Цены успешно обновлены')
         } else {
           if (result.overall_status === 'success') {
-            success('Цены успешно обновлены по всем конкурентам')
+            success('Цены успешно обновлены')
+          } else if (result.overall_status === 'rate_limited') {
+            showError(result.rate_limited_message || 'Слишком частые запросы. Обновление цен доступно раз в 3 минуты.')
           } else if (result.overall_status === 'partial') {
             showError(`По некоторым конкурентам не удалось обновить цену. Обновлено: ${result.success_count}, частично: ${result.partial_count}, ошибок: ${result.error_count}`)
+          } else if (result.overall_status === 'error') {
+            showError(`Не удалось обновить цены. Ошибок: ${result.error_count}`)
           }
         }
       } else if (response.status === 429) {
@@ -551,6 +557,35 @@ export default function AnalysisDetail() {
   const userCompetitor = analysis.competitors?.find(c => c.is_user_site)
   const competitorList = analysis.competitors?.filter(c => !c.is_user_site) || []
 
+  // Карта: id товара конкурента -> конкурент (для ссылки на сайт партнёра)
+  const productToCompetitor = {}
+  competitorList.forEach(c => (c.products || []).forEach(p => { productToCompetitor[p.id] = c }))
+
+  // Цена без копеек — для сводного отчёта
+  const formatPriceInt = (price) => price == null ? 'N/A'
+    : new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(price)
+
+  // Сводный отчёт всегда показывает все связи; выбранный товар лишь подсвечивается.
+  const reportLinks = analysis.product_links || []
+
+  // Группируем связи по своему товару, чтобы объединить его название и цену
+  // по строкам (один товар может быть связан с несколькими конкурентами).
+  const reportGroups = []
+  const reportGroupIndex = {}
+  reportLinks.forEach(link => {
+    const uid = link.user_product?.id ?? `link_${link.id}`
+    if (reportGroupIndex[uid] === undefined) {
+      reportGroupIndex[uid] = reportGroups.length
+      reportGroups.push({
+        userProductId: link.user_product?.id,
+        userName: link.user_product?.name,
+        userPrice: link.user_product?.price,
+        links: []
+      })
+    }
+    reportGroups[reportGroupIndex[uid]].links.push(link)
+  })
+
   // Уже связанные товары — подсвечиваются и недоступны для повторного выбора
   const linkedUserProductIds = new Set(
     (analysis.product_links || []).map(link => link.user_product?.id).filter(Boolean)
@@ -690,26 +725,31 @@ export default function AnalysisDetail() {
           {analysis.product_links && analysis.product_links.length > 0 && (
             <div className="card flex justify-center">
               <div className="w-full max-w-full">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    График динамики цен
-                  </h3>
-                </div>
                 {priceDynamicsData && priceDynamicsData.length > 0 ? (
                   <PriceDynamicsChart
+                    title="График динамики цен"
                     data={priceDynamicsData}
+                    selectedUserProductId={reportProductFilter}
+                    onFilterChange={setReportProductFilter}
                     dateRange={{
                       start: analysis.created_at,
                       end: new Date().toISOString()
                     }}
                   />
                 ) : (
-                  <div className="text-center py-8">
-                    <p className="text-gray-500 dark:text-gray-400">Нет данных для построения графика</p>
-                    <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
-                      График появится автоматически, когда у вас и конкурентов будут товары с историей цен
-                    </p>
-                  </div>
+                  <>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                        График динамики цен
+                      </h3>
+                    </div>
+                    <div className="text-center py-8">
+                      <p className="text-gray-500 dark:text-gray-400">Нет данных для построения графика</p>
+                      <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
+                        График появится автоматически, когда у вас и конкурентов будут товары с историей цен
+                      </p>
+                    </div>
+                  </>
                 )}
               </div>
             </div>
@@ -734,55 +774,93 @@ export default function AnalysisDetail() {
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Ваша цена</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Товар конкурента</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Цена конкурента</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Сайт конкурента</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Разница</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {analysis.product_links.map((link) => (
-                      <tr key={link.id} className="hover:bg-gray-50 dark:hover:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                          {link.user_product?.name || 'N/A'}
-                        </td>
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
-                          {formatPrice(link.user_product?.price)}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                          {link.competitor_product?.name || 'N/A'}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                          {formatPrice(link.competitor_product?.price)}
-                        </td>
-                        <td className={`px-4 py-3 text-sm font-medium ${link.price_difference > 0 ? 'text-red-600 dark:text-red-400' :
-                          link.price_difference < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-gray-100'
-                          }`}>
-                          {link.price_difference !== null
-                            ? `${link.price_difference > 0 ? '+' : link.price_difference < 0 ? "-" : ""}${formatPrice(Math.abs(link.price_difference))}`
-                            : 'N/A'}
-                        </td>
-                      </tr>
-                    ))}
+                    {reportGroups.flatMap((group) => {
+                      const highlighted = reportProductFilter && group.userProductId === reportProductFilter
+                      const rowBg = highlighted
+                        ? 'bg-primary-50 dark:bg-primary-900/30'
+                        : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                      return group.links.map((link, i) => {
+                        const partner = productToCompetitor[link.competitor_product?.id]
+                        const partnerDomain = partner?.domain?.replace(/^https?:\/\//, '')
+                        const partnerHref = link.competitor_product?.url
+                          || (partnerDomain ? `https://${partnerDomain}` : null)
+                        return (
+                          <tr key={link.id} className={`${rowBg} border-b border-gray-200 dark:border-gray-700`}>
+                            {i === 0 && (
+                              <>
+                                <td
+                                  rowSpan={group.links.length}
+                                  className={`px-4 py-3 text-sm text-gray-900 dark:text-gray-100 align-middle border-r border-gray-200 dark:border-gray-700 ${highlighted ? 'font-semibold' : ''}`}
+                                >
+                                  {group.userName || 'N/A'}
+                                </td>
+                                <td
+                                  rowSpan={group.links.length}
+                                  className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 align-middle border-r border-gray-200 dark:border-gray-700"
+                                >
+                                  {formatPriceInt(group.userPrice)}
+                                </td>
+                              </>
+                            )}
+                            <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                              {link.competitor_product?.name || 'N/A'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                              {formatPriceInt(link.competitor_product?.price)}
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              {partnerHref ? (
+                                <a
+                                  href={partnerHref}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-primary-600 dark:text-primary-400 hover:underline inline-flex items-center gap-1"
+                                >
+                                  <span className="truncate max-w-[180px]">{partnerDomain || 'Перейти'}</span>
+                                  <ExternalLink className="h-3 w-3 shrink-0" />
+                                </a>
+                              ) : (
+                                <span className="text-gray-400 dark:text-gray-500">—</span>
+                              )}
+                            </td>
+                            <td className={`px-4 py-3 text-sm font-medium ${link.price_difference > 0 ? 'text-red-600 dark:text-red-400' :
+                              link.price_difference < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-gray-100'
+                              }`}>
+                              {link.price_difference !== null
+                                ? `${link.price_difference > 0 ? '+' : link.price_difference < 0 ? "-" : ""}${formatPriceInt(Math.abs(link.price_difference))}`
+                                : 'N/A'}
+                            </td>
+                          </tr>
+                        )
+                      })
+                    })}
                   </tbody>
                 </table>
               </div>
             )}
           </div>
 
-          {analysis.product_links?.length > 0 && (
+          {reportLinks.length > 0 && (
             <div className="grid md:grid-cols-3 gap-4">
               <div className="card text-center">
                 <p className="text-sm text-gray-500 dark:text-gray-400">Всего позиций</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{analysis.product_links.length}</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{reportLinks.length}</p>
               </div>
               <div className="card text-center">
                 <p className="text-sm text-gray-500 dark:text-gray-400">Выше ценой</p>
                 <p className="text-2xl font-bold text-red-600 dark:text-red-400">
-                  {analysis.product_links.filter(l => l.price_difference > 0).length}
+                  {reportLinks.filter(l => l.price_difference > 0).length}
                 </p>
               </div>
               <div className="card text-center">
                 <p className="text-sm text-gray-500 dark:text-gray-400">Ниже ценой</p>
                 <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                  {analysis.product_links.filter(l => l.price_difference < 0).length}
+                  {reportLinks.filter(l => l.price_difference < 0).length}
                 </p>
               </div>
             </div>
@@ -892,33 +970,19 @@ export default function AnalysisDetail() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <p className="text-gray-500 dark:text-gray-400 mb-4">Нет товаров</p>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      URL вашего сайта
-                    </label>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="text"
-                        value={userSiteUrl}
-                        onChange={(e) => setUserSiteUrl(e.target.value)}
-                        placeholder="Ваш сайт (например: example.ru)"
-                        className="input-field flex-1"
-                      />
-                    </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Укажите URL вашего сайта, затем настройте селекторы и соберите товары
-                    </p>
-                    {userCompetitor && (
-                      <Link
-                        to={`/analysis/${id}/competitor/${userCompetitor.id}/selectors`}
-                        className="btn-primary text-sm inline-flex items-center space-x-1 mt-3"
-                      >
-                        <Settings className="h-4 w-4" />
-                        <span>Настроить селекторы и собрать товары</span>
-                      </Link>
-                    )}
-                  </div>
+                  <p className="text-gray-500 dark:text-gray-400">Нет товаров</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Настройте селекторы для вашего сайта и соберите товары
+                  </p>
+                  {userCompetitor && (
+                    <Link
+                      to={`/analysis/${id}/competitor/${userCompetitor.id}/selectors`}
+                      className="btn-primary text-sm inline-flex items-center space-x-1"
+                    >
+                      <Settings className="h-4 w-4" />
+                      <span>Настроить селекторы и собрать товары</span>
+                    </Link>
+                  )}
                 </div>
               )}
             </div>
@@ -950,7 +1014,8 @@ export default function AnalysisDetail() {
                     onClick={() => setShowHowItWorksModal(true)}
                     className="btn-secondary flex items-center space-x-2"
                   >
-                    <span>Как это работает?</span>
+                    <HelpCircle className="h-5 w-5" strokeWidth={2.5} />
+                    <span>Как это работает</span>
                   </button>
                   <button
                     onClick={() => {
@@ -979,7 +1044,7 @@ export default function AnalysisDetail() {
 
             {linkingMode && (
               <div className="mb-6 space-y-6">
-                <div className="p-4 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
+                <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                   <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Ваши товары</h5>
                   <div className="mb-3">
                     <input
@@ -1136,31 +1201,60 @@ export default function AnalysisDetail() {
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">Мои товары</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">Товары конкурента</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">Сайт конкурента</th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {analysis.product_links.map(link => (
-                      <tr key={link.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                        <td className="px-4 py-3 align-top">
-                          <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{link.user_product?.name || 'N/A'}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{formatPrice(link.user_product?.price)}</p>
-                        </td>
-                        <td className="px-4 py-3 align-top">
-                          <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{link.competitor_product?.name || 'N/A'}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{formatPrice(link.competitor_product?.price)}</p>
-                        </td>
-                        <td className="px-4 py-3 align-top text-right">
-                          <button
-                            onClick={() => unlinkProducts(link.id)}
-                            className="p-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
-                            title="Удалить связь"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {reportGroups.flatMap((group) =>
+                      group.links.map((link, i) => {
+                        const partner = productToCompetitor[link.competitor_product?.id]
+                        const partnerDomain = partner?.domain?.replace(/^https?:\/\//, '')
+                        const partnerHref = link.competitor_product?.url
+                          || (partnerDomain ? `https://${partnerDomain}` : null)
+                        return (
+                        <tr key={link.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                          {i === 0 && (
+                            <td
+                              rowSpan={group.links.length}
+                              className="px-4 py-3 align-middle border-r border-gray-200 dark:border-gray-700"
+                            >
+                              <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{group.userName || 'N/A'}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">{formatPrice(group.userPrice)}</p>
+                            </td>
+                          )}
+                          <td className="px-4 py-3 align-top">
+                            <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{link.competitor_product?.name || 'N/A'}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{formatPrice(link.competitor_product?.price)}</p>
+                          </td>
+                          <td className="px-4 py-3 align-top text-sm">
+                            {partnerHref ? (
+                              <a
+                                href={partnerHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary-600 dark:text-primary-400 hover:underline inline-flex items-center gap-1"
+                              >
+                                <span className="truncate max-w-[180px]">{partnerDomain || 'Перейти'}</span>
+                                <ExternalLink className="h-3 w-3 shrink-0" />
+                              </a>
+                            ) : (
+                              <span className="text-gray-400 dark:text-gray-500">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 align-top text-right">
+                            <button
+                              onClick={() => unlinkProducts(link.id)}
+                              className="p-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                              title="Удалить связь"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </td>
+                        </tr>
+                        )
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>

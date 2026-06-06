@@ -121,7 +121,7 @@ class PriceHistory(db.Model):
     currency = db.Column(db.String(10), default='RUB')
     recorded_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    product = db.relationship('Product', backref='price_history')
+    product = db.relationship('Product', backref=db.backref('price_history', cascade='all, delete-orphan'))
 
     def to_dict(self):
         return {

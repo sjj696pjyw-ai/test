@@ -26,6 +26,8 @@ export default function SelectorsSetup() {
         const response = await api.get(`/analysis/competitor/${competitorId}`)
         const comp = response.data.competitor
         setCompetitor(comp)
+        // Подставляем текущий сайт в поле ссылки — его можно изменить на новый
+        if (comp.domain) setUrl(comp.domain)
         if (comp.title_selector) setNameSelector(comp.title_selector)
         if (comp.price_selector) setPriceSelector(comp.price_selector)
       } catch (err) {
@@ -303,55 +305,6 @@ export default function SelectorsSetup() {
             </div>
           )}
 
-          {/* Button to update selectors and re-parse for existing competitors */}
-          {competitor && competitor.id && (
-            <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-              <h4 className="font-medium text-gray-900 dark:text-white mb-4">Обновить настройки и пересобрать товары</h4>
-              <button
-                onClick={async () => {
-                  if (!url || !nameSelector || !priceSelector) {
-                    setError('Заполните URL и оба селектора')
-                    return
-                  }
-                  setLoading(true)
-                  try {
-                    const response = await api.post(`/analysis/competitor/${competitorId}/reparse`, {
-                      url: url.startsWith('http') ? url : `https://${url}`,
-                      title_selector: nameSelector,
-                      price_selector: priceSelector
-                    })
-                    setSaved(true)
-                    setVerificationResult({
-                      valid: true,
-                      name_count: response.data.products.length,
-                      price_count: response.data.products.length,
-                      sample_names: response.data.products.slice(0, 3).map(p => p.name),
-                      sample_prices: response.data.products.slice(0, 5).map(p => String(p.price))
-                    })
-                    success('Селекторы обновлены и товары пересобраны')
-                  } catch (err) {
-                    setError(err.response?.data?.error || 'Ошибка обновления')
-                  } finally {
-                    setLoading(false)
-                  }
-                }}
-                disabled={loading || !url || !nameSelector || !priceSelector}
-                className="btn-secondary flex items-center space-x-2"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    <span>Обновление...</span>
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="h-5 w-5" />
-                    <span>Обновить селекторы и пересобрать товары</span>
-                  </>
-                )}
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </div>

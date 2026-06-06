@@ -19,23 +19,30 @@ class SiteParser:
             return None
         if '%' in price_str or 'скидк' in price_str.lower():
             return None
-        
-        # Если в строке несколько цен (например, "36 990 ₽43 990 ₽"), берём первую
-        # Находим все числовые значения в строке
+
+        # В ячейке цены может быть несколько чисел: старая (зачёркнутая) цена,
+        # текущая цена и иногда мелкие числа вроде кэшбэка. Старая цена всегда
+        # выше текущей, а порядок в разметке у разных сайтов разный, поэтому
+        # нельзя просто брать первое число.
         price_matches = re.findall(r'[\d\s]+(?:[.,]\d+)?', price_str)
-        if len(price_matches) > 1:
-            # Берём первое найденное число (обычно это акционная/текущая цена)
-            price_str = price_matches[0].strip()
-        
-        price_str = re.sub(r'[^\d.,]', '', price_str)
-        price_str = price_str.replace(',', '.')
-        try:
-            val = float(price_str)
-            if val < 10 or val > 1_000_000_000:  # Защита от некорректных значений
-                return None
-            return val
-        except:
+        nums = []
+        for m in price_matches:
+            cleaned = re.sub(r'[^\d.,]', '', m).replace(',', '.')
+            try:
+                val = float(cleaned)
+            except ValueError:
+                continue
+            if 10 <= val <= 1_000_000_000:  # Защита от некорректных значений
+                nums.append(val)
+
+        if not nums:
             return None
+
+        # Отбрасываем заведомо мелкие числа (кэшбэк и т.п.), затем берём
+        # наименьшую из оставшихся — это текущая цена со скидкой.
+        threshold = max(nums) * 0.3
+        big = [n for n in nums if n >= threshold]
+        return min(big) if big else min(nums)
 
     def _try_selectors(self, soup, selectors):
         for selector in selectors:
@@ -54,6 +61,18 @@ class SiteParser:
             headers = self._get_headers()
             response = self.session.get(url, headers=headers, timeout=15, allow_redirects=True)
             response.raise_for_status()
+
+            # Если сервер не указал кодировку в заголовке, requests по умолчанию
+            # берёт ISO-8859-1, из-за чего UTF-8 страницы превращаются в «кракозябры».
+            # Определяем реальную кодировку по содержимому страницы.
+            header_charset = None
+            content_type = response.headers.get('Content-Type', '')
+            if 'charset=' in content_type.lower():
+                header_charset = content_type.lower().split('charset=')[-1].split(';')[0].strip()
+
+            if not header_charset or header_charset in ('iso-8859-1', 'latin-1'):
+                response.encoding = response.apparent_encoding or 'utf-8'
+
             return response.text
         except Exception as e:
             print(f"Requests fetch error for {url}: {e}")

@@ -250,28 +250,47 @@ class PriceUpdateService:
         partial_count = 0
         error_count = 0
         rate_limited_count = 0
-        
+        skipped_count = 0  # конкуренты без настроенных селекторов — это не ошибка
+
         for competitor in competitors:
             result = PriceUpdateService.update_competitor_prices(competitor.id)
             results.append(result)
-            
-            if result.get('status') == 'success':
+
+            status = result.get('status')
+            if status == 'success':
                 success_count += 1
-            elif result.get('status') == 'partial':
+            elif status == 'partial':
                 partial_count += 1
-            elif result.get('status') == 'rate_limited':
+            elif status == 'rate_limited':
                 rate_limited_count += 1
+            elif status == 'no_selectors':
+                skipped_count += 1
             else:
                 error_count += 1
-        
+
+        # Сколько конкурентов реально обновилось
+        updated = success_count + partial_count
+
         # Determine overall status
-        if error_count == len(competitors):
-            overall_status = 'error'
-        elif success_count + partial_count == len(competitors):
-            overall_status = 'success'
+        if updated == 0:
+            if error_count > 0:
+                overall_status = 'error'
+            elif rate_limited_count > 0:
+                overall_status = 'rate_limited'
+            else:
+                overall_status = 'success'  # обновлять было нечего (только без селекторов)
         else:
-            overall_status = 'partial'
-        
+            if error_count == 0 and rate_limited_count == 0:
+                overall_status = 'success' if partial_count == 0 else 'partial'
+            else:
+                overall_status = 'partial'
+
+        # Сообщение про рейт-лимит (берём из первого ограниченного конкурента)
+        rate_limited_message = next(
+            (r.get('error') for r in results if r.get('status') == 'rate_limited' and r.get('error')),
+            None
+        )
+
         return {
             'success': overall_status != 'error',
             'overall_status': overall_status,
@@ -281,6 +300,8 @@ class PriceUpdateService:
             'partial_count': partial_count,
             'error_count': error_count,
             'rate_limited_count': rate_limited_count,
+            'rate_limited_message': rate_limited_message,
+            'skipped_count': skipped_count,
             'results': results
         }
     
@@ -353,27 +374,24 @@ class PriceUpdateService:
             for date_str in all_dates:
                 user_price = None
                 competitor_price = None
-                
-                # Find user price for this date
-                for h in user_history:
-                    if h.recorded_at.date().isoformat() == date_str:
-                        user_price = h.price
-                        break
-                
-                # If no history record, use current price for the latest date
-                if user_price is None and date_str == current_date:
+
+                # Берём самую свежую запись истории за этот день (а не первую/старую),
+                # чтобы при нескольких изменениях за день показывалась актуальная цена
+                user_day = [h for h in user_history if h.recorded_at.date().isoformat() == date_str]
+                if user_day:
+                    user_price = max(user_day, key=lambda h: h.recorded_at).price
+
+                competitor_day = [h for h in competitor_history if h.recorded_at.date().isoformat() == date_str]
+                if competitor_day:
+                    competitor_price = max(competitor_day, key=lambda h: h.recorded_at).price
+
+                # Для текущего дня актуальна текущая цена товара: история хранит
+                # прежние значения (записываются перед изменением), поэтому
+                # сегодняшняя точка должна брать живую цену из товара.
+                if date_str == current_date:
                     user_price = user_product.price
-                
-                # Find competitor price for this date
-                for h in competitor_history:
-                    if h.recorded_at.date().isoformat() == date_str:
-                        competitor_price = h.price
-                        break
-                
-                # If no history record, use current price for the latest date
-                if competitor_price is None and date_str == current_date:
                     competitor_price = competitor_product.price
-                
+
                 if user_price is not None or competitor_price is not None:
                     series_data['data_points'].append({
                         'date': date_str,

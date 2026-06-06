@@ -521,6 +521,7 @@ function NewAnalysisModal({ onClose, onSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (loading) return // защита от повторной отправки (двойного клика)
     setError('')
 
     const filledCompetitors = competitors.filter(c => c.trim())
@@ -529,30 +530,25 @@ function NewAnalysisModal({ onClose, onSuccess }) {
       return
     }
 
-    // Проверяем, не являются ли введенные сайты исключенными
-    const sitesToCheck = []
-    if (userSite) sitesToCheck.push(userSite)
-    competitors.forEach(c => { if (c.trim()) sitesToCheck.push(c.trim()) })
-
-    for (const site of sitesToCheck) {
-      try {
-        const res = await api.post('/analysis/check-site', { url: site })
-        if (res.data.is_excluded) {
-          showError(res.data.message || 'Сайт относится к агрегаторам/маркетплейсам/мессенджерам/поисковикам')
-          return // Прерываем создание анализа
-        }
-      } catch (err) {
-        // Если ошибка от сервера (например, сайт исключен), тоже прерываем
-        if (err.response?.data?.is_excluded) {
-          showError(err.response.data.message || 'Сайт относится к агрегаторам/маркетплейсам/мессенджерам/поисковикам')
-          return
-        }
-        // Игнорируем другие ошибки проверки, продолжаем
-      }
-    }
-
+    // Блокируем кнопку на всё время отправки, включая проверку сайтов
     setLoading(true)
     try {
+      // Проверяем сайты на исключённые — параллельно, чтобы не ждать по очереди
+      const sitesToCheck = []
+      if (userSite) sitesToCheck.push(userSite)
+      competitors.forEach(c => { if (c.trim()) sitesToCheck.push(c.trim()) })
+
+      const checks = await Promise.allSettled(
+        sitesToCheck.map(site => api.post('/analysis/check-site', { url: site }))
+      )
+      for (const r of checks) {
+        const payload = r.status === 'fulfilled' ? r.value.data : r.reason?.response?.data
+        if (payload?.is_excluded) {
+          showError(payload.message || 'Сайт относится к агрегаторам/маркетплейсам/мессенджерам/поисковикам')
+          return // finally сбросит loading
+        }
+      }
+
       const data = {
         type: analysisType,
         region,
