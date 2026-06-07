@@ -17,8 +17,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY Price-monitor/price-monitor/backend/requirements.txt ./
-RUN pip install --upgrade pip
-RUN pip install --no-cache-dir -i https://pypi.org/simple -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY Price-monitor/price-monitor/backend/ ./
 
