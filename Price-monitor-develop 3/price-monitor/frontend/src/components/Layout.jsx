@@ -32,41 +32,34 @@ export default function Layout({ children }) {
               )}
             </Link>
 
-            <nav className="hidden md:flex items-center space-x-8">
+            <nav className="hidden md:flex items-center gap-6">
               <Link to="/" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">Главная</Link>
+              {user && (
+                <Link to="/dashboard" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">Мои анализы</Link>
+              )}
+              <button
+                onClick={toggleTheme}
+                className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                aria-label="Toggle theme"
+              >
+                {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+              </button>
               {user ? (
                 <>
-                  <Link to="/dashboard" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">Мои анализы</Link>
-                  <div className="flex items-center space-x-4">
-                    <button
-                      onClick={toggleTheme}
-                      className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                      aria-label="Toggle theme"
-                    >
-                      {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-                    </button>
-                    <Link to="/profile" className="flex items-center space-x-1 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">
-                      <User className="h-4 w-4" />
-                      <span className="hidden lg:inline">Профиль</span>
-                    </Link>
-                    <button onClick={handleLogout} className="btn-secondary flex items-center space-x-1 text-sm">
-                      <LogOut className="h-4 w-4" />
-                      <span>Выйти</span>
-                    </button>
-                  </div>
+                  <Link to="/profile" className="flex items-center space-x-1 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">
+                    <User className="h-4 w-4" />
+                    <span className="hidden lg:inline">Профиль</span>
+                  </Link>
+                  <button onClick={handleLogout} className="btn-secondary flex items-center space-x-1 text-sm">
+                    <LogOut className="h-4 w-4" />
+                    <span>Выйти</span>
+                  </button>
                 </>
               ) : (
-                <div className="flex items-center space-x-4">
-                  <button
-                    onClick={toggleTheme}
-                    className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                    aria-label="Toggle theme"
-                  >
-                    {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-                  </button>
+                <>
                   <Link to="/login" className="btn-secondary">Войти</Link>
                   <Link to="/register" className="btn-primary">Регистрация</Link>
-                </div>
+                </>
               )}
             </nav>
 

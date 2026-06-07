@@ -6,7 +6,7 @@ import json
 from ..models import db, Competitor
 from ..services import (
     AnalysisService, CompetitorService, ProductService,
-    ProductLinkService, SearchService, SiteParsingService, PriceUpdateService
+    ProductLinkService, SiteParsingService, PriceUpdateService
 )
 from ..utils.domains import is_excluded_domain
 
@@ -35,54 +35,24 @@ def create_analysis():
     default_name = f"Анализ #{user_analyses_count + 1}"
     analysis_name = name if name else default_name
 
-    if analysis_type == 'auto':
-        queries = data.get('queries', [])
-        positions = data.get('positions', 5)
-        result_types = data.get('result_types', ['organic'])
-
-        if not queries:
-            return jsonify({'error': 'Поисковые запросы обязательны для автоматического анализа'}), 400
-
-        user_site = data.get('user_site')
-
-        analysis = AnalysisService.create_analysis(
-            user_id=current_user_id,
-            analysis_type='auto',
-            region=region,
-            queries=queries,
-            user_site=user_site,
-            name=analysis_name
-        )
-
-        if user_site:
-            CompetitorService.add_competitor(
-                analysis_id=analysis.id,
-                domain=user_site,
-                is_user_site=True
-            )
-
-        competitors = SearchService.perform_search(
-            analysis_id=analysis.id,
-            queries=queries,
-            positions=positions,
-            result_types=result_types,
-            region=region
-        )
-
-        return jsonify({
-            'message': 'Поиск завершен, выберите конкурентов',
-            'analysis': analysis.to_dict(),
-            'analysis_id': analysis.id,
-            'found_competitors': competitors,
-            'require_selection': True
-        }), 200
-
-    elif analysis_type == 'manual':
+    if analysis_type == 'manual':
         user_site = data.get('user_site')
         competitors = data.get('competitors', [])
 
         if not user_site:
             return jsonify({'error': 'User site is required for manual analysis'}), 400
+
+        # Сайт конкурента не должен совпадать с вашим сайтом (сравнение по домену)
+        def _host(u):
+            u = (u or '').strip().lower()
+            u = u.split('//')[-1]
+            if u.startswith('www.'):
+                u = u[4:]
+            return u.split('/')[0]
+
+        user_host = _host(user_site)
+        if any(_host(c.get('domain')) == user_host for c in competitors if c.get('domain')):
+            return jsonify({'error': 'Сайт конкурента не должен совпадать с вашим сайтом'}), 400
 
         analysis = AnalysisService.create_analysis(
             user_id=current_user_id,
@@ -249,86 +219,13 @@ def update_competitor(competitor_id):
     }), 200
 
 
-@analysis_bp.route('/competitor/<int:competitor_id>/reparse', methods=['POST'])
-@jwt_required()
-def reparse_competitor(competitor_id):
-    """Update selectors and re-parse products for a competitor"""
-    current_user_id = get_jwt_identity()
-    competitor = Competitor.query.get(competitor_id)
-    
-    if not competitor:
-        return jsonify({'error': 'Конкурент не найден'}), 404
-    
-    # Verify user has access to this competitor's analysis
-    analysis = AnalysisService.get_analysis_by_id(competitor.analysis_id, current_user_id)
-    if not analysis:
-        return jsonify({'error': 'Доступ запрещен'}), 403
-    
-    data = request.get_json()
-    url = data.get('url')
-    title_selector = data.get('title_selector')
-    price_selector = data.get('price_selector')
-    
-    if not all([url, title_selector, price_selector]):
-        return jsonify({'error': 'URL и селекторы обязательны'}), 400
-    
-    # Update competitor settings
-    competitor.title_selector = title_selector
-    competitor.price_selector = price_selector
-    if url:
-        competitor.domain = url
-    
-    db.session.commit()
-    
-    # Parse products with new settings
-    products = SiteParsingService.parse_competitor_site(
-        competitor_id=competitor_id,
-        url=url,
-        title_selector=title_selector,
-        price_selector=price_selector
-    )
-    
-    return jsonify({
-        'message': 'Селекторы обновлены и товары собраны',
-        'competitor': competitor.to_dict(),
-        'products': [p.to_dict() for p in products]
-    }), 200
-
-
 @analysis_bp.route('/competitor/<int:competitor_id>', methods=['DELETE'])
 @jwt_required()
 def delete_competitor(competitor_id):
     if CompetitorService.delete_competitor(competitor_id):
         return jsonify({'message': 'Competitor deleted successfully'}), 200
-    
+
     return jsonify({'error': 'Competitor not found'}), 404
-
-
-@analysis_bp.route('/<int:analysis_id>/select-competitors', methods=['POST'])
-@jwt_required()
-def select_competitors(analysis_id):
-    current_user_id = get_jwt_identity()
-    analysis = AnalysisService.get_analysis_by_id(analysis_id, current_user_id)
-    
-    if not analysis:
-        return jsonify({'error': 'Analysis not found'}), 404
-    
-    data = request.get_json()
-    selected_domains = data.get('competitors', [])
-    
-    if not selected_domains:
-        return jsonify({'error': 'No competitors selected'}), 400
-    
-    if len(selected_domains) > 3:
-        return jsonify({'error': 'Maximum 3 competitors allowed'}), 400
-    
-    domain_names = [c.get('domain') if isinstance(c, dict) else c for c in selected_domains]
-    saved_competitors = SearchService.save_selected_competitors(analysis_id, domain_names)
-    
-    return jsonify({
-        'message': 'Competitors saved successfully',
-        'competitors': [c.to_dict() for c in saved_competitors]
-    }), 200
 
 
 @analysis_bp.route('/competitor/<int:competitor_id>/parse', methods=['POST'])
@@ -489,6 +386,40 @@ def get_price_dynamics(analysis_id):
         'dynamics': dynamics,
         'days': days
     }), 200
+
+
+@analysis_bp.route('/events', methods=['GET'])
+@jwt_required()
+def get_events():
+    """Лента событий изменения цен по связанным товарам всех анализов пользователя."""
+    from datetime import datetime as _dt
+    current_user_id = get_jwt_identity()
+
+    def parse(s):
+        try:
+            return _dt.strptime(s, '%Y-%m-%d').date() if s else None
+        except ValueError:
+            return None
+
+    date_from = parse(request.args.get('from'))
+    date_to = parse(request.args.get('to'))
+    # По умолчанию — только сегодня (в UTC, как и метки времени в истории цен)
+    if not date_from and not date_to:
+        today_utc = _dt.utcnow().date()
+        date_from = today_utc
+        date_to = today_utc
+
+    events = PriceUpdateService.get_user_events(current_user_id, date_from, date_to)
+    return jsonify({'events': events}), 200
+
+
+@analysis_bp.route('/update-all-prices', methods=['POST'])
+@jwt_required()
+def update_all_prices():
+    """Обновляет цены по всем анализам пользователя (для кнопки обновления в «Событиях»)."""
+    current_user_id = get_jwt_identity()
+    result = PriceUpdateService.update_user_analyses_prices(current_user_id)
+    return jsonify(result), 200
 
 
 @analysis_bp.route('/check-site', methods=['POST'])

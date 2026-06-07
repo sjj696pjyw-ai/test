@@ -4,61 +4,18 @@ import api from '../utils/api'
 import { ArrowLeft, Download, Table, Link as LinkIcon, X, Check, Settings, Trash2, Edit3, Save, XCircle, RefreshCw, ExternalLink, ChevronLeft, ChevronRight, HelpCircle } from 'lucide-react'
 import { getRegionName } from '../utils/regions'
 import { exportToExcel, exportToCSV, formatPrice, formatDate } from '../utils/export'
-import { PriceComparisonChart, PriceDifferenceChart } from '../components/Charts'
 import { PriceDynamicsChart } from '../components/PriceDynamicsChart'
 import { useToast } from '../context/ToastContext'
 
 const DEMO_DATA = {
-  1: {
-    id: 1, analysis_type: 'auto', region: '213',
-    queries: ['iPhone 15 Pro', 'Samsung Galaxy S24'],
-    user_site: 'example.ru',
-    created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-    competitors: [
-      {
-        id: 101, domain: 'mvideo.ru', is_user_site: false,
-        title_selector: '.product-title', price_selector: '.product-price',
-        products: [
-          { id: 201, name: 'iPhone 15 Pro 128GB', price: 89990, currency: 'RUB' },
-          { id: 202, name: 'iPhone 15 Pro 256GB', price: 99990, currency: 'RUB' },
-          { id: 203, name: 'Samsung Galaxy S24 256GB', price: 79990, currency: 'RUB' },
-        ]
-      },
-      {
-        id: 102, domain: 'citilink.ru', is_user_site: false,
-        title_selector: '.product_name', price_selector: '.current-price',
-        products: [
-          { id: 204, name: 'iPhone 15 Pro 128GB Natural Titanium', price: 87990, currency: 'RUB' },
-          { id: 205, name: 'Samsung Galaxy S24 Ultra 512GB', price: 109990, currency: 'RUB' },
-        ]
-      },
-      {
-        id: 103, domain: 'example.ru', is_user_site: true,
-        title_selector: null, price_selector: null,
-        products: [
-          { id: 206, name: 'iPhone 15 Pro 128GB', price: 94990, currency: 'RUB' },
-          { id: 207, name: 'iPhone 15 Pro 256GB', price: 104990, currency: 'RUB' },
-          { id: 208, name: 'Samsung Galaxy S24 256GB', price: 84990, currency: 'RUB' },
-          { id: 209, name: 'Samsung Galaxy S24 Ultra 512GB', price: 114990, currency: 'RUB' },
-        ]
-      },
-    ],
-    product_links: [
-      { user_product_id: 206, competitor_product_id: 201 },
-      { user_product_id: 207, competitor_product_id: 202 },
-      { user_product_id: 208, competitor_product_id: 203 },
-      { user_product_id: 209, competitor_product_id: 205 },
-    ]
-  },
   2: {
     id: 2, analysis_type: 'manual', region: '2',
-    queries: ['Ноутбук Dell XPS'],
-    user_site: 'myshop.ru',
-    created_at: new Date(Date.now() - 5 * 86400000).toISOString(),
+    created_at: '2026-05-30T09:45:00.000Z',
     competitors: [
       {
         id: 104, domain: 'dns-shop.ru', is_user_site: false,
         title_selector: '.catalog-product__name', price_selector: '.product-price__current',
+        last_price_update: new Date(Date.now() - 86400000).toISOString(),
         products: [
           { id: 210, name: 'Ноутбук Dell XPS 13 9310', price: 119990, currency: 'RUB' },
           { id: 211, name: 'Ноутбук Dell XPS 15 9520', price: 159990, currency: 'RUB' },
@@ -68,14 +25,16 @@ const DEMO_DATA = {
       {
         id: 105, domain: 'eldorado.ru', is_user_site: false,
         title_selector: '.product__title', price_selector: '.product__price',
+        last_price_update: new Date(Date.now() - 86400000).toISOString(),
         products: [
-          { id: 213, name: 'Dell XPS 13 Plus 9320', price: 134990, currency: 'RUB' },
-          { id: 214, name: 'Dell XPS 15 9530', price: 169990, currency: 'RUB' },
+          { id: 213, name: 'Ноутбук Dell XPS 13 Plus 9320', price: 129990, currency: 'RUB' },
+          { id: 214, name: 'Ноутбук Dell XPS 15 9530', price: 169990, currency: 'RUB' },
         ]
       },
       {
         id: 106, domain: 'myshop.ru', is_user_site: true,
-        title_selector: null, price_selector: null,
+        title_selector: '.title', price_selector: '.price',
+        last_price_update: new Date(Date.now() - 86400000).toISOString(),
         products: [
           { id: 215, name: 'Ноутбук Dell XPS 13', price: 124990, currency: 'RUB' },
           { id: 216, name: 'Ноутбук Dell XPS 15', price: 164990, currency: 'RUB' },
@@ -87,49 +46,26 @@ const DEMO_DATA = {
       { user_product_id: 215, competitor_product_id: 210 },
       { user_product_id: 216, competitor_product_id: 211 },
       { user_product_id: 217, competitor_product_id: 212 },
-    ]
-  },
-  3: {
-    id: 3, analysis_type: 'auto', region: '213',
-    queries: ['Sony PlayStation 5'],
-    user_site: 'gamezone.ru',
-    created_at: new Date(Date.now() - 7 * 86400000).toISOString(),
-    competitors: [
-      {
-        id: 107, domain: 'mvideo.ru', is_user_site: false,
-        title_selector: '.product-title', price_selector: '.product-price',
-        products: [
-          { id: 218, name: 'Sony PlayStation 5 Digital Edition', price: 45990, currency: 'RUB' },
-          { id: 219, name: 'Sony PlayStation 5 Slim', price: 52990, currency: 'RUB' },
-          { id: 220, name: 'DualSense Wireless Controller', price: 6990, currency: 'RUB' },
-        ]
-      },
-      {
-        id: 108, domain: 'gamepark.ru', is_user_site: false,
-        title_selector: '.card__title', price_selector: '.card__price',
-        products: [
-          { id: 221, name: 'PS5 Digital Edition + FIFA 24', price: 49990, currency: 'RUB' },
-          { id: 222, name: 'Sony PlayStation 5 Pro', price: 74990, currency: 'RUB' },
-        ]
-      },
-      {
-        id: 109, domain: 'gamezone.ru', is_user_site: true,
-        title_selector: null, price_selector: null,
-        products: [
-          { id: 223, name: 'Sony PlayStation 5 Digital', price: 47990, currency: 'RUB' },
-          { id: 224, name: 'Sony PlayStation 5 Slim', price: 54990, currency: 'RUB' },
-          { id: 225, name: 'PS5 DualSense Controller', price: 7490, currency: 'RUB' },
-          { id: 226, name: 'Sony PlayStation 5 Pro', price: 79990, currency: 'RUB' },
-        ]
-      },
-    ],
-    product_links: [
-      { user_product_id: 223, competitor_product_id: 218 },
-      { user_product_id: 224, competitor_product_id: 219 },
-      { user_product_id: 225, competitor_product_id: 220 },
-      { user_product_id: 226, competitor_product_id: 222 },
+      // Тот же наш товар (Dell XPS 13) связан и со вторым конкурентом
+      { user_product_id: 215, competitor_product_id: 213 },
     ]
   }
+}
+
+// Приводит демо-анализ к тому же виду, что отдаёт API: раскрывает связи в
+// объекты товаров и считает разницу цен, чтобы отчёт/связывание не были «N/A».
+function normalizeDemoAnalysis(raw) {
+  const productById = {}
+  ;(raw.competitors || []).forEach(c => (c.products || []).forEach(p => { productById[p.id] = p }))
+  const product_links = (raw.product_links || []).map((l, i) => {
+    const up = productById[l.user_product_id] || null
+    const cp = productById[l.competitor_product_id] || null
+    const price_difference = (up && cp && up.price != null && cp.price != null)
+      ? up.price - cp.price
+      : null
+    return { id: i + 1, user_product: up, competitor_product: cp, price_difference }
+  })
+  return { ...raw, product_links }
 }
 
 export default function AnalysisDetail() {
@@ -143,16 +79,10 @@ export default function AnalysisDetail() {
   // Карта выбранных товаров конкурентов: { [competitorId]: productId }
   // Позволяет связать свой товар с одним товаром у каждого конкурента
   const [selectedCompetitorProducts, setSelectedCompetitorProducts] = useState({})
-  const [userSiteUrl, setUserSiteUrl] = useState('')
-  const [userSiteStatus, setUserSiteStatus] = useState(null)
   const [isEditingName, setIsEditingName] = useState(false)
   const [editingName, setEditingName] = useState('')
   const [isUpdatingPrices, setIsUpdatingPrices] = useState(false)
   const [priceDynamicsData, setPriceDynamicsData] = useState(null)
-  const [showEditDomainModal, setShowEditDomainModal] = useState(false)
-  const [editingDomain, setEditingDomain] = useState('')
-  const [editingTitleSelector, setEditingTitleSelector] = useState('')
-  const [editingPriceSelector, setEditingPriceSelector] = useState('')
   const [userProductsPage, setUserProductsPage] = useState(0)
   const [competitorProductsPages, setCompetitorProductsPages] = useState({})
   const [showHowItWorksModal, setShowHowItWorksModal] = useState(false)
@@ -177,7 +107,7 @@ export default function AnalysisDetail() {
 
   const fetchAnalysis = async () => {
     if (isDemo && DEMO_DATA[id]) {
-      setAnalysis(DEMO_DATA[id])
+      setAnalysis(normalizeDemoAnalysis(DEMO_DATA[id]))
       setLoading(false)
       return
     }
@@ -249,21 +179,28 @@ export default function AnalysisDetail() {
     }
 
     if (isDemo) {
-      // Demo data for price dynamics
-      setPriceDynamicsData([
-        {
-          product_name: 'iPhone 15 Pro 128GB',
+      // Демо-динамику строим из связей анализа, чтобы график был консистентным
+      const compByProduct = {}
+      ;(analysis.competitors || []).forEach(c => (c.products || []).forEach(p => { compByProduct[p.id] = c }))
+      const d = (n) => new Date(Date.now() - n * 86400000).toISOString().split('T')[0]
+      setPriceDynamicsData((analysis.product_links || []).map(link => {
+        const cp = link.competitor_product
+        const up = link.user_product
+        const base = cp?.price ?? 0
+        return {
+          product_name: up?.name,
+          user_product_id: up?.id,
           user_site: true,
-          competitor_name: 'iPhone 15 Pro 128GB',
-          competitor_domain: 'mvideo.ru',
-          product_url: 'https://mvideo.ru/product/1',
+          competitor_name: cp?.name,
+          competitor_domain: compByProduct[cp?.id]?.domain || '',
+          product_url: null,
           data_points: [
-            { date: new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0], user_price: 94990, competitor_price: 89990 },
-            { date: new Date(Date.now() - 3 * 86400000).toISOString().split('T')[0], user_price: 93990, competitor_price: 88990 },
-            { date: new Date().toISOString().split('T')[0], user_price: 94990, competitor_price: 89990 }
+            { date: d(7), user_price: up?.price, competitor_price: base - 3000 },
+            { date: d(3), user_price: up?.price, competitor_price: base - 1500 },
+            { date: d(0), user_price: up?.price, competitor_price: base }
           ]
         }
-      ])
+      }))
       return
     }
 
@@ -302,36 +239,11 @@ export default function AnalysisDetail() {
     setEditingName('')
   }
 
-  const handleEditDomainClick = () => {
-    if (userCompetitor) {
-      setEditingDomain(userCompetitor.domain || '')
-      setEditingTitleSelector(userCompetitor.title_selector || '')
-      setEditingPriceSelector(userCompetitor.price_selector || '')
-      setShowEditDomainModal(true)
-    }
-  }
-
-  const handleSaveDomainAndSelectors = async () => {
-    if (!editingDomain.trim() || !editingTitleSelector.trim() || !editingPriceSelector.trim()) {
-      showError('Домен и селекторы не могут быть пустыми')
+  const handleExportExcel = () => {
+    if (isDemo) {
+      showError('Экспорт недоступен в демо-режиме')
       return
     }
-    try {
-      await api.put(`/analysis/competitor/${userCompetitor.id}`, {
-        url: editingDomain.trim(),
-        title_selector: editingTitleSelector.trim(),
-        price_selector: editingPriceSelector.trim()
-      })
-      await fetchAnalysis()
-      setShowEditDomainModal(false)
-      success('Домен и селекторы обновлены')
-    } catch (error) {
-      console.error('Error updating domain and selectors:', error)
-      showError('Ошибка при обновлении домена и селекторов')
-    }
-  }
-
-  const handleExportExcel = () => {
     console.log('Export Excel clicked, product_links:', analysis?.product_links?.length)
     if (!analysis?.product_links?.length) {
       showError('Нет данных для экспорта. Сначала свяжите товары.')
@@ -353,6 +265,10 @@ export default function AnalysisDetail() {
   }
 
   const handleExportCSV = () => {
+    if (isDemo) {
+      showError('Экспорт недоступен в демо-режиме')
+      return
+    }
     console.log('Export CSV clicked, product_links:', analysis?.product_links?.length)
     if (!analysis?.product_links?.length) {
       showError('Нет данных для экспорта. Сначала свяжите товары.')
@@ -371,43 +287,6 @@ export default function AnalysisDetail() {
 
     console.log('Exporting to CSV, data:', data.length, 'rows')
     exportToCSV(data, `analysis_${id}_${Date.now()}`)
-  }
-
-  const linkProducts = async (userProductId, competitorProductId) => {
-    try {
-      await api.post('/analysis/link', {
-        analysis_id: parseInt(id),
-        user_product_id: userProductId,
-        competitor_product_id: competitorProductId
-      })
-      await fetchAnalysis()
-      setLinkingMode(null)
-      setSelectedProduct(null)
-      setSelectedCompetitorProducts({})
-      setUserProductSearch('')
-      setCompetitorProductSearch({})
-    } catch (error) {
-      console.error('Error linking products:', error)
-    }
-  }
-
-  const handleSelectCompetitorProduct = async (competitorProductId) => {
-    if (!selectedProduct) return
-    try {
-      await api.post('/analysis/link', {
-        analysis_id: parseInt(id),
-        user_product_id: selectedProduct.id,
-        competitor_product_id: competitorProductId
-      })
-      await fetchAnalysis()
-      setLinkingMode(null)
-      setSelectedProduct(null)
-      setSelectedCompetitorProducts({})
-      setUserProductSearch('')
-      setCompetitorProductSearch({})
-    } catch (error) {
-      console.error('Error linking products:', error)
-    }
   }
 
   const unlinkProducts = async (linkId) => {
@@ -594,14 +473,6 @@ export default function AnalysisDetail() {
     (analysis.product_links || []).map(link => link.competitor_product?.id).filter(Boolean)
   )
 
-  const chartData = analysis.product_links?.map(link => ({
-    competitor: link.competitor_product?.name,
-    user_price: link.user_product?.price,
-    competitor_price: link.competitor_product?.price,
-    price_difference: link.price_difference,
-    competitor_product: link.competitor_product?.name
-  })) || []
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
@@ -666,11 +537,11 @@ export default function AnalysisDetail() {
             )}
           </div>
           <div className="flex items-center space-x-2">
-            <button onClick={handleExportExcel} className="btn-secondary flex items-center space-x-2">
+            <button onClick={handleExportExcel} className={`btn-secondary flex items-center space-x-2 ${isDemo ? 'opacity-50 cursor-not-allowed' : ''}`}>
               <Download className="h-4 w-4" />
               <span>Excel</span>
             </button>
-            <button onClick={handleExportCSV} className="btn-secondary flex items-center space-x-2">
+            <button onClick={handleExportCSV} className={`btn-secondary flex items-center space-x-2 ${isDemo ? 'opacity-50 cursor-not-allowed' : ''}`}>
               <Download className="h-4 w-4" />
               <span>CSV</span>
             </button>
@@ -731,10 +602,6 @@ export default function AnalysisDetail() {
                     data={priceDynamicsData}
                     selectedUserProductId={reportProductFilter}
                     onFilterChange={setReportProductFilter}
-                    dateRange={{
-                      start: analysis.created_at,
-                      end: new Date().toISOString()
-                    }}
                   />
                 ) : (
                   <>
@@ -868,34 +735,6 @@ export default function AnalysisDetail() {
         </div>
       )}
 
-      {activeTab === 'charts' && (
-        <div className="space-y-6">
-          {chartData.length > 0 ? (
-            <>
-              <div className="card">
-                <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Сравнение цен</h3>
-                <div className="h-80">
-                  <PriceComparisonChart data={chartData} />
-                </div>
-              </div>
-              <div className="card">
-                <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Разница в ценах</h3>
-                <div className="h-80">
-                  <PriceDifferenceChart data={chartData} />
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="card text-center py-12">
-              <p className="text-gray-500 dark:text-gray-400">Нет данных для графиков</p>
-              <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
-                Свяжите товары на вкладке "Связывание" для отображения графиков
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
       {activeTab === 'products' && (
         <div className="space-y-6">
           {userCompetitor && (
@@ -918,16 +757,26 @@ export default function AnalysisDetail() {
                   )}
                 </h3>
                 <div className="flex items-center space-x-2">
-                  {!isDemo && userCompetitor.products?.length > 0 && (
-                    <Link
-                      to={`/analysis/${id}/competitor/${userCompetitor.id}/selectors`}
-                      className="btn-secondary text-sm flex items-center space-x-2"
-                    >
-                      <Settings className="h-4 w-4" />
-                      <span>Настроить</span>
-                    </Link>
+                  {userCompetitor.products?.length > 0 && (
+                    isDemo ? (
+                      <button
+                        onClick={() => showError('Настройка селекторов недоступна в демо-режиме')}
+                        className="btn-secondary text-sm flex items-center space-x-2"
+                      >
+                        <Settings className="h-4 w-4" />
+                        <span>Настроить</span>
+                      </button>
+                    ) : (
+                      <Link
+                        to={`/analysis/${id}/competitor/${userCompetitor.id}/selectors`}
+                        className="btn-secondary text-sm flex items-center space-x-2"
+                      >
+                        <Settings className="h-4 w-4" />
+                        <span>Настроить</span>
+                      </Link>
+                    )
                   )}
-                  {!isDemo && userCompetitor.products?.length > 0 && (
+                  {userCompetitor.products?.length > 0 && (
                     <button
                       onClick={() => handleUpdatePrices(userCompetitor.id)}
                       disabled={isUpdatingPrices}
@@ -1031,6 +880,10 @@ export default function AnalysisDetail() {
                     <span>Закрыть</span>
                   </button>
                 </div>
+              ) : isDemo ? (
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  Связывание товаров недоступно в демо-режиме
+                </span>
               ) : (
                 <button
                   onClick={() => setLinkingMode('user')}
@@ -1243,13 +1096,15 @@ export default function AnalysisDetail() {
                             )}
                           </td>
                           <td className="px-4 py-3 align-top text-right">
-                            <button
-                              onClick={() => unlinkProducts(link.id)}
-                              className="p-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
-                              title="Удалить связь"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            {!isDemo && (
+                              <button
+                                onClick={() => unlinkProducts(link.id)}
+                                className="p-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                                title="Удалить связь"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
                           </td>
                         </tr>
                         )
@@ -1277,7 +1132,7 @@ export default function AnalysisDetail() {
                     </span>
                     <div>
                       <a
-                        href={`https://${comp.domain}`}
+                        href={`https://${comp.domain.replace(/^https?:\/\//, '')}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 hover:underline"
@@ -1295,11 +1150,21 @@ export default function AnalysisDetail() {
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Link to={`/analysis/${id}/competitor/${comp.id}/selectors`} className="btn-secondary text-sm flex items-center space-x-2">
-                      <Settings className="h-4 w-4" />
-                      <span>Настроить</span>
-                    </Link>
-                    {!isDemo && comp.products?.length > 0 && (
+                    {isDemo ? (
+                      <button
+                        onClick={() => showError('Настройка селекторов недоступна в демо-режиме')}
+                        className="btn-secondary text-sm flex items-center space-x-2"
+                      >
+                        <Settings className="h-4 w-4" />
+                        <span>Настроить</span>
+                      </button>
+                    ) : (
+                      <Link to={`/analysis/${id}/competitor/${comp.id}/selectors`} className="btn-secondary text-sm flex items-center space-x-2">
+                        <Settings className="h-4 w-4" />
+                        <span>Настроить</span>
+                      </Link>
+                    )}
+                    {comp.products?.length > 0 && (
                       <button
                         onClick={() => handleUpdatePrices(comp.id)}
                         disabled={isUpdatingPrices}
@@ -1338,72 +1203,6 @@ export default function AnalysisDetail() {
       )}
 
       {/* Edit Domain and Selectors Modal */}
-      {showEditDomainModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-              Редактирование домена и селекторов
-            </h3>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Домен (URL каталога)
-                </label>
-                <input
-                  type="text"
-                  value={editingDomain}
-                  onChange={(e) => setEditingDomain(e.target.value)}
-                  className="input-field w-full"
-                  placeholder="example.ru/catalog"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Селектор названия товара
-                </label>
-                <input
-                  type="text"
-                  value={editingTitleSelector}
-                  onChange={(e) => setEditingTitleSelector(e.target.value)}
-                  className="input-field w-full font-mono text-sm"
-                  placeholder=".product-title"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Селектор цены
-                </label>
-                <input
-                  type="text"
-                  value={editingPriceSelector}
-                  onChange={(e) => setEditingPriceSelector(e.target.value)}
-                  className="input-field w-full font-mono text-sm"
-                  placeholder=".product-price"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end space-x-2 mt-6">
-              <button
-                onClick={() => setShowEditDomainModal(false)}
-                className="btn-secondary text-sm"
-              >
-                Отмена
-              </button>
-              <button
-                onClick={handleSaveDomainAndSelectors}
-                className="btn-primary text-sm"
-              >
-                Сохранить
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* How It Works Modal */}
       {showHowItWorksModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

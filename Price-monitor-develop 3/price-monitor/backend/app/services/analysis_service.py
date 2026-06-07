@@ -1,6 +1,5 @@
 from ..models import db, Analysis, Competitor, Product, ProductLink, PriceHistory
-from ..utils import SiteParser, is_excluded_domain
-from config.region_config import REGION_CITIES, REGION_ALIASES, adapt_query_to_city
+from ..utils import SiteParser
 
 
 class AnalysisService:
@@ -98,32 +97,8 @@ class CompetitorService:
 
 class ProductService:
     @staticmethod
-    def add_product(competitor_id, name, price, currency='RUB'):
-        product = Product(
-            competitor_id=competitor_id,
-            name=name,
-            price=price,
-            currency=currency
-        )
-        db.session.add(product)
-        db.session.commit()
-        return product
-
-    @staticmethod
     def get_competitor_products(competitor_id):
         return Product.query.filter_by(competitor_id=competitor_id).all()
-
-    @staticmethod
-    def update_product(product_id, name=None, price=None):
-        product = Product.query.get(product_id)
-        if product:
-            if name is not None:
-                product.name = name
-            if price is not None:
-                product.price = price
-            db.session.commit()
-            return product
-        return None
 
 
 class ProductLinkService:
@@ -159,52 +134,6 @@ class ProductLinkService:
     @staticmethod
     def get_analysis_links(analysis_id):
         return ProductLink.query.filter_by(analysis_id=analysis_id).all()
-
-
-class SearchService:
-    @staticmethod
-    def perform_search(analysis_id, queries, positions, result_types, region):
-        if result_types is None:
-            result_types = ['organic']
-
-        adapted_queries = [adapt_query_to_city(q, region) for q in queries]
-
-        competitors = []
-        
-        try:
-            from ..utils import DuckDuckGoParser
-            ddg = DuckDuckGoParser(region=region)
-            competitors = ddg.find_competitors(adapted_queries, positions)
-        except ImportError:
-            pass
-        
-        wants_organic = 'organic' in result_types
-        wants_ads = 'cpc' in result_types or 'ads' in result_types or 'ad' in result_types
-
-        for comp in competitors:
-            comp_types = []
-            if wants_organic:
-                comp_types.append('organic')
-            if wants_ads:
-                comp_types.append('ad')
-            comp['types'] = comp_types
-
-        competitors = [c for c in competitors if not is_excluded_domain(c['domain'])]
-
-        db.session.commit()
-        return competitors
-    
-    @staticmethod
-    def save_selected_competitors(analysis_id, selected_domains):
-        saved_competitors = []
-        for domain in selected_domains[:3]:
-            competitor = CompetitorService.add_competitor(
-                analysis_id=analysis_id,
-                domain=domain,
-                competitor_type='organic'
-            )
-            saved_competitors.append(competitor)
-        return saved_competitors
 
 
 class SiteParsingService:
@@ -275,8 +204,3 @@ class SiteParsingService:
             return {'valid': False, 'name_count': 0, 'price_count': 0}
         
         return parser.verify_selectors(html, title_selector, price_selector)
-
-    @staticmethod
-    def test_selector(competitor_id, url, selector, selector_type):
-        parser = SiteParser()
-        return parser.test_selector(url, selector, selector_type)

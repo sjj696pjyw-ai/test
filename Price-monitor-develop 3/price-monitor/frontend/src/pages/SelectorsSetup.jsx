@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../utils/api'
-import { ArrowLeft, Loader2, Check, AlertCircle, Eye, ExternalLink, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Loader2, Check, AlertCircle, Eye, ExternalLink } from 'lucide-react'
 import { useToast } from '../context/ToastContext'
 
 export default function SelectorsSetup() {
   const { id, competitorId } = useParams()
   const navigate = useNavigate()
-  const { success, error: showError } = useToast()
+  const { error: showError } = useToast()
 
   const [url, setUrl] = useState('')
   const [nameSelector, setNameSelector] = useState('')
@@ -15,7 +15,6 @@ export default function SelectorsSetup() {
   const [loading, setLoading] = useState(false)
   const [verificationResult, setVerificationResult] = useState(null)
   const [error, setError] = useState('')
-  const [saved, setSaved] = useState(false)
   const [competitor, setCompetitor] = useState(null)
   const [competitorLoading, setCompetitorLoading] = useState(true)
 
@@ -125,13 +124,6 @@ export default function SelectorsSetup() {
               <p className="text-red-700 dark:text-red-300 font-medium">Ошибка</p>
               <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
             </div>
-          </div>
-        )}
-
-        {saved && (
-          <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg flex items-center space-x-3">
-            <Check className="h-5 w-5 text-green-600 dark:text-green-400" />
-            <p className="text-green-700 dark:text-green-300">Селекторы сохранены!</p>
           </div>
         )}
 

@@ -3,7 +3,6 @@ from .analysis_service import (
     CompetitorService,
     ProductService,
     ProductLinkService,
-    SearchService,
     SiteParsingService
 )
 from .price_update_service import PriceUpdateService
@@ -13,7 +12,6 @@ __all__ = [
     'CompetitorService',
     'ProductService',
     'ProductLinkService',
-    'SearchService',
     'SiteParsingService',
     'PriceUpdateService'
 ]

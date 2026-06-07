@@ -23,7 +23,12 @@ def create_app(config_name='default'):
     from app.routes import auth_bp, analysis_bp
     app.register_blueprint(auth_bp)
     app.register_blueprint(analysis_bp)
-    
+
+    # Создаём таблицы при старте приложения. Нужно для прод-запуска через
+    # gunicorn (main.py с db.create_all() выполняется только при `python main.py`).
+    with app.app_context():
+        db.create_all()
+
     @app.route('/api/health', methods=['GET'])
     def health_check():
         return jsonify({'status': 'healthy', 'message': 'API is running'}), 200

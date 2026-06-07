@@ -2,7 +2,9 @@ import axios from 'axios'
 import { fixEncodingRecursive } from './encoding'
 
 const api = axios.create({
-  baseURL: 'http://127.0.0.1:5001/api',
+  // Локально (npm run dev) переменная не задана → '/api' проксируется на бэкенд
+  // через vite.config.js. В проде задаётся VITE_API_URL при сборке.
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: {
     'Content-Type': 'application/json'
   }

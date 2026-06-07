@@ -37,7 +37,7 @@ const SELECT_CHEVRON = {
   backgroundSize: '1rem'
 }
 
-export function PriceDynamicsChart({ data, dateRange, selectedUserProductId, onFilterChange, userProducts, title }) {
+export function PriceDynamicsChart({ data, selectedUserProductId, onFilterChange, title }) {
   const [activeDot, setActiveDot] = useState(null)
   const [filterProduct, setFilterProduct] = useState(selectedUserProductId || null)
   const [highlightedLegend, setHighlightedLegend] = useState(null)

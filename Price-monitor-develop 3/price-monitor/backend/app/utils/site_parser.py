@@ -170,19 +170,3 @@ class SiteParser:
             'sample_names': sample_names,
             'sample_prices': sample_prices,
         }
-
-    def test_selector(self, url, selector, selector_type='name'):
-        html = self.get_page(url)
-        if not html:
-            return {'success': False, 'elements': [], 'count': 0}
-
-        soup = BeautifulSoup(html, 'lxml')
-        elements = soup.select(selector)
-
-        sample_texts = [el.get_text(strip=True) for el in elements[:5] if el.get_text(strip=True)]
-
-        return {
-            'success': len(elements) > 0,
-            'count': len(elements),
-            'sample_texts': sample_texts
-        }

@@ -10,7 +10,7 @@ import {
   LineElement,
   PointElement
 } from 'chart.js'
-import { Bar, Doughnut, Line } from 'react-chartjs-2'
+import { Line } from 'react-chartjs-2'
 
 ChartJS.register(
   CategoryScale,
@@ -23,107 +23,6 @@ ChartJS.register(
   LineElement,
   PointElement
 )
-
-export function PriceComparisonChart({ data }) {
-  const chartData = {
-    labels: data?.map(d => d.competitor?.substring(0, 15) || 'Unknown') || [],
-    datasets: [
-      {
-        label: 'Ваша цена',
-        data: data?.map(d => d.user_price) || [],
-        backgroundColor: 'rgba(59, 130, 246, 0.8)',
-        borderColor: 'rgb(59, 130, 246)',
-        borderWidth: 1
-      },
-      {
-        label: 'Цена конкурента',
-        data: data?.map(d => d.competitor_price) || [],
-        backgroundColor: 'rgba(239, 68, 68, 0.8)',
-        borderColor: 'rgb(239, 68, 68)',
-        borderWidth: 1
-      }
-    ]
-  }
-
-  const options = {
-    responsive: true,
-    plugins: {
-      legend: { position: 'top' },
-      title: { display: true, text: 'Сравнение цен' }
-    },
-    scales: {
-      y: { beginAtZero: true, title: { display: true, text: 'Цена (₽)' } }
-    }
-  }
-
-  return <Bar data={chartData} options={options} />
-}
-
-export function PriceDifferenceChart({ data }) {
-  const chartData = {
-    labels: data?.map(d => d.competitor_product?.substring(0, 15) || 'Product') || [],
-    datasets: [
-      {
-        label: 'Разница в цене (₽)',
-        data: data?.map(d => d.price_difference) || [],
-        backgroundColor: data?.map(d =>
-          d.price_difference > 0 ? 'rgba(239, 68, 68, 0.7)' :
-            d.price_difference < 0 ? 'rgba(34, 197, 94, 0.7)' :
-              'rgba(156, 163, 175, 0.7)'
-        ) || [],
-        borderWidth: 1
-      }
-    ]
-  }
-
-  const options = {
-    responsive: true,
-    plugins: {
-      legend: { display: false },
-      title: { display: true, text: 'Разница цен' }
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-        title: { display: true, text: 'Разница (₽)' }
-      }
-    }
-  }
-
-  return <Bar data={chartData} options={options} />
-}
-
-export function CompetitorsDistribution({ competitors }) {
-  const counts = {}
-  competitors?.forEach(c => {
-    const type = c.competitor_type || 'unknown'
-    counts[type] = (counts[type] || 0) + 1
-  })
-
-  const chartData = {
-    labels: Object.keys(counts),
-    datasets: [{
-      data: Object.values(counts),
-      backgroundColor: [
-        'rgba(59, 130, 246, 0.8)',
-        'rgba(239, 68, 68, 0.8)',
-        'rgba(34, 197, 94, 0.8)',
-        'rgba(234, 179, 8, 0.8)'
-      ],
-      borderWidth: 1
-    }]
-  }
-
-  const options = {
-    responsive: true,
-    plugins: {
-      legend: { position: 'right' },
-      title: { display: true, text: 'Типы конкурентов' }
-    }
-  }
-
-  return <Doughnut data={chartData} options={options} />
-}
 
 export function AnalysisHistoryChart({ analyses }) {
   const last7Days = []

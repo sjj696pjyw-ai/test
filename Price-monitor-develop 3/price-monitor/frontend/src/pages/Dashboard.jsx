@@ -3,10 +3,10 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import api from '../utils/api'
-import { Plus, Calendar, Globe, Trash2, Eye, Search, Edit3, ChevronLeft, ChevronRight, Filter, TrendingUp, Users, BarChart3, Check, X, ChevronDown } from 'lucide-react'
+import { Plus, Calendar, Globe, Trash2, Eye, Search, ChevronLeft, ChevronRight, Filter, X, ChevronDown, RefreshCw, AlertTriangle, ArrowUp, ArrowDown } from 'lucide-react'
 import { REGIONS, getRegionName } from '../utils/regions'
 import { formatDate } from '../utils/export'
-import { AnalysisHistoryChart, CompetitorsDistribution } from '../components/Charts'
+import { AnalysisHistoryChart } from '../components/Charts'
 
 const ITEMS_PER_PAGE = 10
 
@@ -14,13 +14,9 @@ const DEMO_ANALYSES = [
   {
     id: 2,
     analysis_type: 'manual',
-    competitors_count: 5,
-    created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    region: 2,
-    queries: ['Ноутбук Dell XPS'],
-    avg_price: 125000,
-    lowest_price: 119990,
-    highest_price: 135000
+    competitors_count: 2,
+    created_at: '2026-05-30T09:45:00.000Z',
+    region: '2'
   }
 ]
 
@@ -34,10 +30,18 @@ export default function Dashboard() {
   const [showRegionDropdown, setShowRegionDropdown] = useState(false)
   const regionDropdownRef = useRef(null)
   const { user } = useAuth()
-  const { success, error: showError } = useToast()
+  const { success, error: showError, warning } = useToast()
   const navigate = useNavigate()
   const location = useLocation()
   const isDemo = location.state?.demo === true
+
+  // Лента событий по изменениям цен
+  const [events, setEvents] = useState([])
+  const [eventsLoading, setEventsLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [problemIds, setProblemIds] = useState([])
+  const [eventFrom, setEventFrom] = useState('') // '' = сегодня
+  const [eventTo, setEventTo] = useState('')
 
   useEffect(() => {
     if (isDemo) {
@@ -66,6 +70,60 @@ export default function Dashboard() {
       console.error('Error fetching analyses:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchEvents = async () => {
+    if (isDemo) { setEvents([]); return [] }
+    setEventsLoading(true)
+    try {
+      const params = {}
+      if (eventFrom) params.from = eventFrom
+      if (eventTo) params.to = eventTo
+      const res = await api.get('/analysis/events', { params })
+      const list = res.data.events || []
+      setEvents(list)
+      return list
+    } catch (e) {
+      console.error('Error fetching events:', e)
+      return []
+    } finally {
+      setEventsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!isDemo) fetchEvents()
+  }, [isDemo, eventFrom, eventTo])
+
+  const handleRefreshAll = async () => {
+    if (isDemo) { showError('Обновление недоступно в демо-режиме'); return }
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      const before = events.length
+      const res = await api.post('/analysis/update-all-prices')
+      const data = res.data
+      setProblemIds(data.problem_analysis_ids || [])
+      const after = await fetchEvents()
+      await fetchAnalyses()
+      const newCount = Math.max(0, (after?.length || 0) - before)
+      if (data.any_rate_limited) {
+        showError('Обновление цен доступно раз в 3 минуты')
+      } else if (data.need_selectors) {
+        warning('Сначала настройте селекторы у конкурентов — обновлять нечего')
+      } else if (data.any_problem) {
+        warning('Есть проблемы с обновлением в некоторых анализах')
+      } else if (newCount > 0) {
+        success(`Цены обновлены. Новых событий: ${newCount}`)
+      } else {
+        success('Цены обновлены. Новых событий нет')
+      }
+    } catch (e) {
+      console.error('Error refreshing all:', e)
+      showError('Не удалось обновить цены')
+    } finally {
+      setRefreshing(false)
     }
   }
 
@@ -129,12 +187,6 @@ export default function Dashboard() {
     return text.substring(0, maxLength - 3) + '...'
   }
 
-  const stats = {
-    total: analyses.length,
-    manualCount: analyses.filter(a => a.analysis_type === 'manual').length,
-    totalCompetitors: analyses.reduce((acc, a) => acc + (a.competitors_count || 0), 0)
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -183,46 +235,85 @@ export default function Dashboard() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-        <div className="card flex items-center space-x-4">
-          <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900 rounded-lg flex items-center justify-center">
-            <BarChart3 className="h-6 w-6 text-primary-600 dark:text-primary-400" />
+      {/* События + История анализов */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+        {/* События */}
+        <div className="card flex flex-col h-96">
+          <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white shrink-0">События</h3>
+            <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
+              <input
+                type="date"
+                value={eventFrom || new Date().toISOString().split('T')[0]}
+                onChange={(e) => setEventFrom(e.target.value)}
+                className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]"
+              />
+              <span>—</span>
+              <input
+                type="date"
+                value={eventTo || new Date().toISOString().split('T')[0]}
+                onChange={(e) => setEventTo(e.target.value)}
+                className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]"
+              />
+              <button onClick={() => { setEventFrom(''); setEventTo('') }} className="text-primary-600 dark:text-primary-400 hover:underline">Сегодня</button>
+              <button onClick={() => { setEventFrom('2000-01-01'); setEventTo(new Date().toISOString().split('T')[0]) }} className="text-primary-600 dark:text-primary-400 hover:underline">За всё время</button>
+              <button
+                onClick={handleRefreshAll}
+                disabled={refreshing || isDemo}
+                title="Обновить цены по всем анализам"
+                className={`p-2 rounded-lg text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${(refreshing || isDemo) ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
           </div>
-          <div>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.total}</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Всего анализов</p>
+
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {isDemo ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">События недоступны в демо-режиме</p>
+            ) : eventsLoading ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">Загрузка…</p>
+            ) : events.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">За выбранный период событий нет</p>
+            ) : (
+              <div className="space-y-3">
+                {events.map((ev, i) => (
+                  <div key={i} className="text-sm text-gray-700 dark:text-gray-300 border-b border-gray-100 dark:border-gray-800 pb-2 last:border-0">
+                    <p>
+                      В анализе{' '}
+                      <Link to={`/analysis/${ev.analysis_id}`} className="text-primary-600 dark:text-primary-400 font-medium hover:underline">{ev.analysis_name}</Link>
+                      {' '}у конкурента{' '}
+                      <a
+                        href={`https://${(ev.competitor_domain || '').replace(/^https?:\/\//, '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-primary-600 dark:text-primary-400 hover:underline"
+                      >
+                        {(ev.competitor_domain || '').replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]}
+                      </a>{' '}
+                      {ev.direction === 'decreased' ? 'снизилась' : 'выросла'} цена на «{ev.product_name}»{' '}
+                      <span className={`inline-flex items-center gap-0.5 font-medium ${ev.direction === 'decreased' ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                        {ev.direction === 'decreased' ? <ArrowDown className="h-3 w-3" /> : <ArrowUp className="h-3 w-3" />}
+                        {Math.round(ev.old_price).toLocaleString('ru-RU')} → {Math.round(ev.new_price).toLocaleString('ru-RU')} ₽
+                      </span>.
+                      {ev.situational ? ' ' + ev.situational : ''}
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{formatDate(ev.date)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-        <div className="card flex items-center space-x-4">
-          <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
-            <Edit3 className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.manualCount}</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Ручных</p>
-          </div>
-        </div>
-        <div className="card flex items-center space-x-4">
-          <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900 rounded-lg flex items-center justify-center">
-            <Users className="h-6 w-6 text-orange-600 dark:text-orange-400" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.totalCompetitors}</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Конкурентов</p>
+
+        {/* История анализов */}
+        <div className="card flex flex-col h-96">
+          <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">История анализов (7 дней)</h3>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <AnalysisHistoryChart analyses={analyses} />
           </div>
         </div>
       </div>
-
-      {analyses.length > 0 && (
-        <div className="flex justify-center mb-8">
-          <div className="card w-full max-w-2xl">
-            <h3 className="text-lg font-semibold mb-4">История анализов (7 дней) </h3>
-            <div className="h-48 overflow-hidden">
-              <AnalysisHistoryChart analyses={analyses} />
-            </div>
-          </div>
-        </div>
-      )}
 
       {analyses.length === 0 ? (
         <div className="card text-center py-12">
@@ -311,8 +402,16 @@ export default function Dashboard() {
                           'конкурента'
                       }
                     </span>                  </div>
-                  <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2 truncate max-w-md">
-                    {analysis.name || `Анализ #${analysis.id}`}
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                    <span className="truncate max-w-md">{analysis.name || `Анализ #${analysis.id}`}</span>
+                    {problemIds.includes(analysis.id) && (
+                      <span
+                        className="text-yellow-500 dark:text-yellow-400 shrink-0"
+                        title="Цены не удаётся обновить — проверьте селекторы или некоторые сайты сейчас недоступны"
+                      >
+                        <AlertTriangle className="h-4 w-4" />
+                      </span>
+                    )}
                   </h3>
                   <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
                     <span className="flex items-center space-x-1">
@@ -324,20 +423,6 @@ export default function Dashboard() {
                       <span>{getRegionName(analysis.region)}</span>
                     </span>
                   </div>
-                  {analysis.queries && analysis.queries.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {analysis.queries.slice(0, 3).map((q, i) => (
-                        <span key={i} className="px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded">
-                          {q}
-                        </span>
-                      ))}
-                      {analysis.queries.length > 3 && (
-                        <span className="px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded">
-                          +{analysis.queries.length - 3}
-                        </span>
-                      )}
-                    </div>
-                  )}
                 </div>
                 <div className="flex items-center space-x-2">
                   <Link to={`/analysis/${analysis.id}`} state={{ demo: isDemo }} className="btn-secondary flex items-center space-x-1">
@@ -407,22 +492,13 @@ export default function Dashboard() {
 }
 
 function NewAnalysisModal({ onClose, onSuccess }) {
-  const [analysisType, setAnalysisType] = useState('manual')
   const [region, setRegion] = useState('213')
   const [regionSearch, setRegionSearch] = useState('')
   const [analysisName, setAnalysisName] = useState('')
-  const [queries, setQueries] = useState('')
-  const [positions, setPositions] = useState(5)
-  const [analysesCount, setAnalysesCount] = useState(0)
-  const [resultTypes, setResultTypes] = useState(['organic'])
   const [userSite, setUserSite] = useState('')
   const [competitors, setCompetitors] = useState([''])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [showCompetitorSelection, setShowCompetitorSelection] = useState(false)
-  const [foundCompetitors, setFoundCompetitors] = useState([])
-  const [selectedCompetitors, setSelectedCompetitors] = useState([])
-  const [analysisId, setAnalysisId] = useState(null)
   const [checkResults, setCheckResults] = useState({})
   const [checkingSite, setCheckingSite] = useState(null)
   const { error: showError } = useToast()
@@ -434,7 +510,6 @@ function NewAnalysisModal({ onClose, onSuccess }) {
       try {
         const response = await api.get('/analysis')
         const count = response.data.analyses?.length || 0
-        setAnalysesCount(count)
         setAnalysisName(`Анализ #${count + 1}`)
       } catch (error) {
         console.error('Error fetching analyses count:', error)
@@ -467,56 +542,6 @@ function NewAnalysisModal({ onClose, onSuccess }) {
 
   const regions = REGIONS
 
-  // City prefixes for domain adaptation (city name in translit)
-  const cityPrefixes = {
-    '2': 'spb',           // Санкт-Петербург
-    '54': 'ekb',          // Екатеринбург
-    '47': 'nsk',          // Новосибирск
-    '43': 'krd',          // Краснодар
-    '120': 'kazan',       // Казань
-    '51': 'samara',       // Самара
-    '24': 'voronezh',     // Воронеж
-    '35': 'nn',           // Нижний Новгород
-    '39': 'rostov',       // Ростов-на-Дону
-    '38': 'volgograd',    // Волгоград
-    '59': 'perm',         // Пермь
-    '28': 'ufa',          // Уфа
-    '48': 'omsk',         // Омск
-    '50': 'chelyabinsk',  // Челябинск
-    '64': 'saratov',      // Саратов
-    '189': 'tyumen',      // Тюмень
-    '30': 'krasnoyarsk',  // Красноярск
-    '66': 'izhevsk',      // Ижевск
-    '75': 'stavropol',    // Ставрополь
-    '44': 'sochi',        // Сочи
-    '58': 'penza',        // Пенза
-    '57': 'orenburg',     // Оренбург
-    '192': 'kemerovo',    // Кемерово
-    '69': 'tomsk',        // Томск
-    '68': 'ulyanovsk',    // Ульяновск
-    '22': 'khabarovsk',   // Хабаровск
-    '26': 'vladivostok',  // Владивосток
-    '70': 'tolyatti',     // Тольятти
-    '49': 'barnaul',      // Барнаул
-    '213': 'msk',         // Москва (default)
-  }
-
-  // Function to adapt domain based on city/region
-  const adaptDomainForCity = (domain, regionId) => {
-    // Don't adapt for Moscow (default) or if domain already has subdomain
-    if (regionId === '213' || domain.includes('.')) {
-      return domain
-    }
-
-    const prefix = cityPrefixes[regionId]
-    if (!prefix) {
-      return domain
-    }
-
-    // For domains like rus-buket.ru, return novosibirsk.rus-buket.ru
-    return `${prefix}.${domain}`
-  }
-
   const filteredRegions = regions.filter(r => r.label.toLowerCase().includes(regionSearch.toLowerCase()))
 
   const handleSubmit = async (e) => {
@@ -527,6 +552,15 @@ function NewAnalysisModal({ onClose, onSuccess }) {
     const filledCompetitors = competitors.filter(c => c.trim())
     if (filledCompetitors.length === 0) {
       showError('Укажите хотя бы одного конкурента для создания анализа')
+      return
+    }
+
+    // Конкурент не должен совпадать с вашим сайтом (сравниваем по домену)
+    const normalizeHost = (u) => (u || '').trim().toLowerCase()
+      .replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]
+    const userHost = normalizeHost(userSite)
+    if (userHost && filledCompetitors.some(c => normalizeHost(c) === userHost)) {
+      showError('Сайт конкурента не должен совпадать с вашим сайтом')
       return
     }
 
@@ -550,55 +584,18 @@ function NewAnalysisModal({ onClose, onSuccess }) {
       }
 
       const data = {
-        type: analysisType,
+        type: 'manual',
         region,
-        queries: queries.split('\n').filter(q => q.trim()),
-        positions,
-        result_types: resultTypes
+        user_site: userSite,
+        competitors: competitors.filter(c => c.trim()).map(domain => ({ domain: domain.trim() }))
       }
       if (analysisName && analysisName.trim()) {
         data.name = analysisName.trim()
       }
-      data.user_site = userSite
-      data.competitors = competitors.filter(c => c.trim()).map(domain => ({ domain: domain.trim() }))
       const response = await api.post('/analysis', data)
-      if (response.data.require_selection) {
-        setAnalysisId(response.data.analysis_id)
-        setFoundCompetitors(response.data.found_competitors || [])
-        setSelectedCompetitors([])
-        setShowCompetitorSelection(true)
-      } else {
-        onSuccess(response.data.analysis)
-      }
+      onSuccess(response.data.analysis)
     } catch (err) {
       setError(err.response?.data?.error || 'Ошибка при создании анализа')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleCompetitorSelect = (domain) => {
-    if (selectedCompetitors.includes(domain)) {
-      setSelectedCompetitors(selectedCompetitors.filter(d => d !== domain))
-    } else if (selectedCompetitors.length < 3) {
-      setSelectedCompetitors([...selectedCompetitors, domain])
-    }
-  }
-
-  const handleConfirmCompetitors = async () => {
-    if (selectedCompetitors.length === 0) {
-      showError('Выберите хотя бы одного конкурента для создания анализа')
-      return
-    }
-    setLoading(true)
-    try {
-      await api.post(`/analysis/${analysisId}/select-competitors`, {
-        competitors: selectedCompetitors.map(domain => ({ domain }))
-      })
-      setShowCompetitorSelection(false)
-      onSuccess({ id: analysisId })
-    } catch (err) {
-      setError(err.response?.data?.error || 'Ошибка при выборе конкурентов')
     } finally {
       setLoading(false)
     }
@@ -612,17 +609,6 @@ function NewAnalysisModal({ onClose, onSuccess }) {
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {error && <div className="p-3 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg">{error}</div>}
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Тип анализа</label>
-            <div className="grid grid-cols-1 gap-4">
-              <button type="button" onClick={() => setAnalysisType('manual')} className={`p-4 border-2 rounded-lg text-left transition-colors ${analysisType === 'manual' ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30' : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'}`}>
-                <Edit3 className={`h-6 w-6 mb-2 ${analysisType === 'manual' ? 'text-primary-600 dark:text-primary-400' : 'text-primary-600'}`} />
-                <h4 className={`font-semibold ${analysisType === 'manual' ? 'text-primary-800 dark:text-primary-200' : ''}`}>Ручной ввод</h4>
-                <p className={`text-sm ${analysisType === 'manual' ? 'text-primary-700 dark:text-primary-300' : 'text-gray-600 dark:text-gray-300'}`}>Указать сайты</p>
-              </button>
-            </div>
-          </div>
 
           <div className="relative">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Регион</label>
@@ -703,111 +689,12 @@ function NewAnalysisModal({ onClose, onSuccess }) {
             {competitors.length < 3 && <button type="button" onClick={() => setCompetitors([...competitors, ''])} className="text-sm text-primary-600">+ Добавить конкурента</button>}
           </div>
 
-          {showCompetitorSelection ? (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white">Найдено {foundCompetitors.length} конкурентов</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Выберите конкурентов для анализа цен. Тип выдачи указан на основе выбранных вами параметров поиска.</p>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200 dark:border-gray-700">
-                      <th className="pb-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 w-10"></th>
-                      <th className="pb-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Сайт</th>
-                      <th className="pb-3 text-center text-sm font-semibold text-gray-700 dark:text-gray-300">Позиция</th>
-                      <th className="pb-3 text-right text-sm font-semibold text-gray-700 dark:text-gray-300">Тип выдачи</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {foundCompetitors.map((comp, index) => {
-                      const displayDomain = adaptDomainForCity(comp.domain, region)
-                      const types = comp.types || ['organic']
-                      const hasAd = types.includes('ad') || types.includes('ads')
-                      const hasOrganic = types.includes('organic')
-                      const position = comp.positions ? Object.values(comp.positions)[0] : index + 1
-                      const isSelected = selectedCompetitors.includes(comp.domain)
-                      return (
-                        <tr
-                          key={index}
-                          onClick={() => handleCompetitorSelect(comp.domain)}
-                          className={`cursor-pointer transition-colors ${isSelected ? 'bg-primary-50 dark:bg-primary-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
-                            }`}
-                        >
-                          <td className="py-3 pr-2">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => { }}
-                              className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                            />
-                          </td>
-                          <td className="py-3">
-                            <a
-                              href={`https://${displayDomain}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              className="font-medium text-primary-600 dark:text-primary-400 hover:underline"
-                            >
-                              {displayDomain}
-                            </a>
-                          </td>
-                          <td className="py-3 text-center">
-                            <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-300">
-                              {position}
-                            </span>
-                          </td>
-                          <td className="py-3 text-right">
-                            <div className="flex flex-wrap gap-1 justify-end">
-                              {hasAd && (
-                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200">
-                                  Платная
-                                </span>
-                              )}
-                              {hasOrganic && (
-                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200">
-                                  Органическая
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Выберите до 3 конкурентов
-              </p>
-
-              <div className="flex justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-700">
-                <button type="button" onClick={() => setShowCompetitorSelection(false)} className="btn-secondary">← Назад</button>
-                <button
-                  type="button"
-                  onClick={handleConfirmCompetitors}
-                  disabled={selectedCompetitors.length === 0 || loading}
-                  className="btn-primary flex items-center space-x-2"
-                >
-                  {loading ? (
-                    <><span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></span><span>Сохранение...</span></>
-                  ) : (
-                    <><span>Далее — сбор цен</span><ChevronRight className="h-4 w-4" /></>
-                  )}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex justify-end space-x-4 pt-4 border-t">
-              <button type="button" onClick={onClose} className="btn-secondary">Отмена</button>
-              <button type="submit" disabled={loading} className="btn-primary flex items-center space-x-2">
-                {loading ? <><span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></span><span>Создание...</span></> : <><span>Создать</span><ChevronRight className="h-4 w-4" /></>}
-              </button>
-            </div>
-          )}
+          <div className="flex justify-end space-x-4 pt-4 border-t">
+            <button type="button" onClick={onClose} className="btn-secondary">Отмена</button>
+            <button type="submit" disabled={loading} className="btn-primary flex items-center space-x-2">
+              {loading ? <><span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></span><span>Создание...</span></> : <><span>Создать</span><ChevronRight className="h-4 w-4" /></>}
+            </button>
+          </div>
         </form>
       </div>
     </div>
