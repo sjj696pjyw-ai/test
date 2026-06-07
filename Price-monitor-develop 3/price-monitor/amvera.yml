@@ -1,9 +1,0 @@
-meta:
-  environment: docker
-build:
-  dockerfile: Dockerfile
-run:
-  # Бэкенд (gunicorn) слушает порт 5000 (см. Dockerfile)
-  containerPort: 5000
-  # Постоянный том для SQLite-базы: DATABASE_URL=sqlite:////data/pricemonitor.db
-  persistenceMount: /data

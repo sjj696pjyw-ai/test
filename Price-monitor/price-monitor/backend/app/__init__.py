@@ -1,4 +1,5 @@
-from flask import Flask, jsonify
+import os
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_bcrypt import Bcrypt
@@ -11,7 +12,10 @@ bcrypt = Bcrypt()
 
 
 def create_app(config_name='default'):
-    app = Flask(__name__)
+    # Если задан FRONTEND_DIST — отдаём собранный фронтенд тем же приложением
+    # (single-app деплой: фронт + API на одном домене).
+    frontend_dist = os.environ.get('FRONTEND_DIST')
+    app = Flask(__name__, static_folder=frontend_dist, static_url_path='')
     app.config.from_object(config[config_name])
     
     CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
@@ -32,9 +36,20 @@ def create_app(config_name='default'):
     @app.route('/api/health', methods=['GET'])
     def health_check():
         return jsonify({'status': 'healthy', 'message': 'API is running'}), 200
-    
+
+    @app.route('/')
+    def serve_index():
+        if app.static_folder:
+            return app.send_static_file('index.html')
+        return jsonify({'status': 'API is running'}), 200
+
     @app.errorhandler(404)
     def not_found(error):
+        # API-пути → JSON 404; остальные → SPA (index.html), если фронт собран
+        if not request.path.startswith('/api') and app.static_folder:
+            index_path = os.path.join(app.static_folder, 'index.html')
+            if os.path.exists(index_path):
+                return app.send_static_file('index.html')
         return jsonify({'error': 'Not found'}), 404
     
     @app.errorhandler(500)
