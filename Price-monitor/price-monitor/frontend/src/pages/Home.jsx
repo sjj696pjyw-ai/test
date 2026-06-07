@@ -190,8 +190,9 @@ export default function Home() {
             ].map((item, i) => (
               <div key={i} className="relative">
                 {i < 2 && (
-                  <div className="hidden md:block absolute top-8 left-[60%] w-[80%] h-0.5 bg-gradient-to-r from-primary-200 to-primary-300 dark:from-primary-800 dark:to-primary-700">
-                    <ChevronRight className="absolute -right-2 -top-2 h-4 w-4 text-primary-300 dark:text-primary-700" />
+                  <div className="hidden md:flex items-center absolute top-8 -translate-y-1/2 left-1/2 w-[calc(100%+2rem)] px-10 pointer-events-none">
+                    <div className="flex-1 h-0.5 bg-gradient-to-r from-primary-300 to-primary-400 dark:from-primary-700 dark:to-primary-600"></div>
+                    <div className="w-0 h-0 -ml-px shrink-0 border-y-[5px] border-y-transparent border-l-[9px] border-l-primary-400 dark:border-l-primary-600"></div>
                   </div>
                 )}
                 <div className="text-center">
