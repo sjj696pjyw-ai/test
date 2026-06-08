@@ -158,15 +158,38 @@ class SiteParser:
         sample_names = [el.get_text(strip=True) for el in name_elements[:5] if el.get_text(strip=True)]
         sample_prices = [el.get_text(strip=True) for el in price_elements[:5] if el.get_text(strip=True) and not is_percentage(el.get_text(strip=True))]
 
-        valid = len(name_elements) > 0 and len(price_elements) > 0
-        mismatch = abs(len(name_elements) - len(price_elements)) > max(len(name_elements), len(price_elements)) * 0.3 if valid else False
+        # Реальное число товаров, которое будет собрано: проходим тем же путём,
+        # что и сбор (parse_products) — пары «название + валидная цена». Иначе
+        # «найдено N» (сырые совпадения) расходится с «добавлено M», потому что
+        # товары без корректной цены отбрасываются при сохранении.
+        collectible = self.parse_products(html, name_selector, price_selector)
+        product_count = len(collectible)
+        raw_max = max(len(name_elements), len(price_elements))
+        skipped = raw_max - product_count
+
+        valid = product_count > 0
+        mismatch = skipped > 0
+
+        if mismatch:
+            mismatch_message = (
+                f'Найдено совпадений: названий {len(name_elements)}, цен {len(price_elements)}. '
+                f'Будет собрано товаров: {product_count}'
+                + (f' (пропущено {skipped} — без корректной цены или без пары название/цена).'
+                   if skipped > 0 else '.')
+            )
+        else:
+            mismatch_message = None
 
         return {
             'valid': valid,
+            # Главный показатель — сколько товаров реально соберётся
+            'product_count': product_count,
+            'skipped_count': skipped,
+            # Сырые совпадения селекторов (для диагностики)
             'name_count': len(name_elements),
             'price_count': len(price_elements),
             'mismatch_warning': mismatch,
-            'mismatch_message': f'Найдено названий: {len(name_elements)}, цен: {len(price_elements)}. Проверьте селекторы.' if mismatch else None,
+            'mismatch_message': mismatch_message,
             'sample_names': sample_names,
             'sample_prices': sample_prices,
         }

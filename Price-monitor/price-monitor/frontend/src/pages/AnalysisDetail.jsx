@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useLocation } from 'react-router-dom'
 import api from '../utils/api'
-import { ArrowLeft, Download, Table, Link as LinkIcon, X, Check, Settings, Trash2, Edit3, Save, XCircle, RefreshCw, ExternalLink, ChevronLeft, ChevronRight, HelpCircle } from 'lucide-react'
+import { ArrowLeft, Download, Table, Link as LinkIcon, X, Check, Settings, Trash2, Edit3, Save, XCircle, RefreshCw, ExternalLink, ChevronLeft, ChevronRight, HelpCircle, Store } from 'lucide-react'
 import { getRegionName } from '../utils/regions'
 import { exportToExcel, exportToCSV, formatPrice, formatDate } from '../utils/export'
 import { PriceDynamicsChart } from '../components/PriceDynamicsChart'
@@ -356,7 +356,8 @@ export default function AnalysisDetail() {
       setSelectedCompetitorProducts({})
       setUserProductSearch('')
       setCompetitorProductSearch({})
-      setLinkingMode(null)
+      // Режим связывания НЕ закрываем — пользователь может продолжать связывать.
+      // Выход из режима — только по кнопке «Закрыть».
       success(
         competitorProductIds.length === 1
           ? 'Товары успешно связаны'
@@ -740,22 +741,33 @@ export default function AnalysisDetail() {
           {userCompetitor && (
             <div className="card">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Ваши товары
-                  <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">
-                    ({userCompetitor.products?.length || 0})
+                <div className="flex items-center space-x-4">
+                  <span className="w-8 h-8 bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400 rounded-full flex items-center justify-center font-semibold shrink-0">
+                    <Store className="h-4 w-4" />
                   </span>
-                  {analysis.user_site && (
-                    <a
-                      href={`https://${analysis.user_site.replace(/^https?:\/\//, '')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm font-normal text-primary-600 dark:text-primary-400 ml-3 hover:underline"
-                    >
-                      {analysis.user_site}
-                    </a>
-                  )}
-                </h3>
+                  <div>
+                    {(userCompetitor.domain || analysis.user_site) ? (
+                      <a
+                        href={`https://${(userCompetitor.domain || analysis.user_site).replace(/^https?:\/\//, '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 hover:underline"
+                      >
+                        {userCompetitor.domain || analysis.user_site}
+                      </a>
+                    ) : (
+                      <span className="font-medium text-gray-900 dark:text-white">Ваш сайт</span>
+                    )}
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {userCompetitor.products?.length || 0} товаров • Ваш сайт
+                      {userCompetitor.last_price_update && (
+                        <span className="ml-2 text-xs">
+                          Цены актуальны на {new Date(userCompetitor.last_price_update).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })} {new Date(userCompetitor.last_price_update).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} (UTC)
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
                 <div className="flex items-center space-x-2">
                   {userCompetitor.products?.length > 0 && (
                     isDemo ? (
@@ -788,24 +800,6 @@ export default function AnalysisDetail() {
                   )}
                 </div>
               </div>
-              {/* Display domain above price actuality */}
-              {userCompetitor.domain && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                  <a
-                    href={`https://${userCompetitor.domain.replace(/^https?:\/\//, '')}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 hover:underline"
-                  >
-                    {userCompetitor.domain}
-                  </a>
-                </p>
-              )}
-              {userCompetitor.last_price_update && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                  Цены актуальны на {new Date(userCompetitor.last_price_update).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })} {new Date(userCompetitor.last_price_update).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} (UTC)
-                </p>
-              )}
               {userCompetitor.products?.length > 0 ? (
                 <div className="space-y-2 max-h-96 overflow-y-auto">
                   {userCompetitor.products.map(product => (
@@ -909,6 +903,11 @@ export default function AnalysisDetail() {
                     />
                   </div>
                   <div className="space-y-2">
+                    {getUserProductsPage().products.length === 0 && (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                        {userProductSearch.trim() ? 'Товары не найдены' : 'Нет товаров'}
+                      </p>
+                    )}
                     {getUserProductsPage().products.map(product => {
                       const isLinked = linkedUserProductIds.has(product.id)
                       return (
@@ -986,6 +985,11 @@ export default function AnalysisDetail() {
                             />
                           </div>
                           <div className="space-y-1">
+                            {getCompetitorProductsPage(competitor.id).products.length === 0 && (
+                              <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                                {competitorProductSearch[competitor.id]?.trim() ? 'Товары не найдены' : 'Нет товаров'}
+                              </p>
+                            )}
                             {getCompetitorProductsPage(competitor.id).products.map(product => {
                               const isLinked = linkedCompetitorProductIds.has(product.id)
                               const isSelected = selectedCompetitorProducts[competitor.id] === product.id

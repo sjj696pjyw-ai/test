@@ -245,14 +245,21 @@ export default function SelectorsSetup() {
                 </div>
               )}
 
+              {verificationResult.product_count !== undefined && (
+                <div className="mb-4">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Будет собрано товаров:</p>
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{verificationResult.product_count}</p>
+                </div>
+              )}
+
               <div className="grid md:grid-cols-2 gap-4 mb-4">
                 <div>
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Названий товаров:</p>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{verificationResult.name_count}</p>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Совпадений названий:</p>
+                  <p className="text-2xl font-bold text-gray-500 dark:text-gray-400">{verificationResult.name_count}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Цен:</p>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{verificationResult.price_count}</p>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Совпадений цен:</p>
+                  <p className="text-2xl font-bold text-gray-500 dark:text-gray-400">{verificationResult.price_count}</p>
                 </div>
               </div>
 

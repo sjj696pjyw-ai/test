@@ -35,17 +35,22 @@ def is_excluded_domain(domain, custom_excluded=None):
     if custom_excluded is None:
         custom_excluded = load_excluded_domains()
     
-    # Проверка стандартных исключений (поисковики, соцсети)
+    # Сравниваем по границе домена, а не по подстроке: домен либо точно
+    # совпадает с записью, либо является её поддоменом. Иначе короткие записи
+    # давали ложные срабатывания (например 'ya.ru' матчил бы 'moya.ru').
+    def _matches(exc):
+        exc = exc.lower().lstrip('.')
+        return domain_lower == exc or domain_lower.endswith('.' + exc)
+
     for exc in EXCLUDED_DOMAINS:
-        if exc in domain_lower or domain_lower.endswith('.' + exc):
+        if _matches(exc):
             return True
-    
-    # Проверка пользовательских исключений (агрегаторы, маркетплейсы)
+
     if custom_excluded:
         for exc in custom_excluded:
-            if exc in domain_lower or domain_lower.endswith('.' + exc):
+            if _matches(exc):
                 return True
-    
+
     return False
 
 
