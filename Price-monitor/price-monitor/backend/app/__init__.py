@@ -33,6 +33,11 @@ def create_app(config_name='default'):
     with app.app_context():
         db.create_all()
 
+    # Фоновый планировщик (ночное обновление цен в 19:30 UTC).
+    # Включается переменной окружения ENABLE_SCHEDULER=1.
+    from app.scheduler import start_scheduler
+    start_scheduler(app)
+
     @app.route('/api/health', methods=['GET'])
     def health_check():
         return jsonify({'status': 'healthy', 'message': 'API is running'}), 200

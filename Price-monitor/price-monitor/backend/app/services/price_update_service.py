@@ -24,7 +24,7 @@ class PriceUpdateService:
         return True, None
     
     @staticmethod
-    def _collect_products_parallel(competitors):
+    def _collect_products_parallel(competitors, respect_rate_limit=True):
         """
         ПАРАЛЛЕЛЬНО собирает товары конкурентов (полный сбор: пагинация/прокрутка),
         только сеть/скрейпинг — БЕЗ обращения к БД, безопасно для потоков.
@@ -40,9 +40,10 @@ class PriceUpdateService:
         for c in competitors:
             if not c.title_selector or not c.price_selector:
                 continue
-            can_update, _ = PriceUpdateService.can_update_competitor(c)
-            if not can_update:
-                continue
+            if respect_rate_limit:
+                can_update, _ = PriceUpdateService.can_update_competitor(c)
+                if not can_update:
+                    continue
             url = c.domain
             if not url.startswith(('http://', 'https://')):
                 url = f'https://{url}'
@@ -60,9 +61,15 @@ class PriceUpdateService:
                 return cid, None
 
         # С Selenium каждый воркер может поднять браузер — ограничиваем, чтобы не
-        # съесть память; на requests-сайтах потоки лёгкие.
+        # съесть память/CPU; на requests-сайтах потоки лёгкие. Лимит настраивается
+        # переменной COLLECT_MAX_WORKERS (≈ числу ядер CPU).
         use_selenium = _os.environ.get('PARSER_USE_SELENIUM', '1') != '0'
-        worker_cap = 3 if use_selenium else 8
+        default_cap = 3 if use_selenium else 8
+        try:
+            worker_cap = int(_os.environ.get('COLLECT_MAX_WORKERS', default_cap))
+        except (TypeError, ValueError):
+            worker_cap = default_cap
+        worker_cap = max(1, worker_cap)
         out = {}
         with ThreadPoolExecutor(max_workers=min(worker_cap, len(targets))) as ex:
             for cid, prods in ex.map(scrape, targets):
@@ -70,12 +77,15 @@ class PriceUpdateService:
         return out
 
     @staticmethod
-    def update_competitor_prices(competitor_id, prefetched_html=None, prefetched_products=None):
+    def update_competitor_prices(competitor_id, prefetched_html=None, prefetched_products=None,
+                                 respect_rate_limit=True):
         """
         Update prices for a single competitor.
         prefetched_html — заранее загруженный HTML первой страницы.
         prefetched_products — уже собранные товары (параллельный сбор): если
             переданы, скрейпинг пропускается, идёт только запись в БД.
+        respect_rate_limit — учитывать лимит «раз в 3 минуты». Для системного
+            (ночного) обновления передаём False.
         Returns dict with status, updated_count, errors, etc.
         """
         competitor = Competitor.query.get(competitor_id)
@@ -87,15 +97,16 @@ class PriceUpdateService:
                 'status': 'error'
             }
         
-        # Check rate limit
-        can_update, error_msg = PriceUpdateService.can_update_competitor(competitor)
-        if not can_update:
-            print(f"[DEBUG] Competitor {competitor_id} is rate limited: {error_msg}")
-            return {
-                'success': False,
-                'error': error_msg,
-                'status': 'rate_limited'
-            }
+        # Check rate limit (системное ночное обновление его игнорирует)
+        if respect_rate_limit:
+            can_update, error_msg = PriceUpdateService.can_update_competitor(competitor)
+            if not can_update:
+                print(f"[DEBUG] Competitor {competitor_id} is rate limited: {error_msg}")
+                return {
+                    'success': False,
+                    'error': error_msg,
+                    'status': 'rate_limited'
+                }
         
         # Check if selectors are configured (skip for user site without selectors - use current price)
         if not competitor.title_selector or not competitor.price_selector:
@@ -283,13 +294,15 @@ class PriceUpdateService:
                 db.session.add(price_history)
     
     @staticmethod
-    def update_analysis_prices(analysis_id):
+    def update_analysis_prices(analysis_id, respect_rate_limit=True):
         """
         Update prices for all competitors in an analysis.
+        respect_rate_limit — для ручного обновления True (лимит раз в 3 мин),
+            для системного (ночного) — False.
         Returns dict with overall status and per-competitor results.
         """
         competitors = Competitor.query.filter_by(analysis_id=analysis_id).all()
-        
+
         if not competitors:
             return {
                 'success': False,
@@ -299,30 +312,31 @@ class PriceUpdateService:
 
         # Если хотя бы один конкурент ещё под рейт-лимитом — не обновляем НИЧЕГО.
         # Обновление доступно раз в 3 минуты, и сразу по всем (чтобы не падать в
-        # ошибку из-за одного сайта).
-        wait_minutes = []
-        for c in competitors:
-            ok, _ = PriceUpdateService.can_update_competitor(c)
-            if not ok and c.last_price_update:
-                remaining = PriceUpdateService.MIN_UPDATE_INTERVAL_MINUTES - (
-                    (datetime.utcnow() - c.last_price_update).total_seconds() / 60
-                )
-                wait_minutes.append(remaining)
-        if wait_minutes:
-            wait = max(1, int(round(max(wait_minutes))))
-            msg = f'Обновление цен доступно раз в 3 минуты. Попробуйте через {wait} мин.'
-            return {
-                'success': False,
-                'status': 'rate_limited',
-                'overall_status': 'rate_limited',   # фронт читает overall_status
-                'rate_limited_message': msg,
-                'error': msg,
-                'results': []
-            }
+        # ошибку из-за одного сайта). Системное обновление этот лимит игнорирует.
+        if respect_rate_limit:
+            wait_minutes = []
+            for c in competitors:
+                ok, _ = PriceUpdateService.can_update_competitor(c)
+                if not ok and c.last_price_update:
+                    remaining = PriceUpdateService.MIN_UPDATE_INTERVAL_MINUTES - (
+                        (datetime.utcnow() - c.last_price_update).total_seconds() / 60
+                    )
+                    wait_minutes.append(remaining)
+            if wait_minutes:
+                wait = max(1, int(round(max(wait_minutes))))
+                msg = f'Обновление цен доступно раз в 3 минуты. Попробуйте через {wait} мин.'
+                return {
+                    'success': False,
+                    'status': 'rate_limited',
+                    'overall_status': 'rate_limited',   # фронт читает overall_status
+                    'rate_limited_message': msg,
+                    'error': msg,
+                    'results': []
+                }
 
         # ПАРАЛЛЕЛЬНО собираем товары всех конкурентов (только скрейпинг, без БД),
         # а изменения в БД применяем последовательно (SQLite — один писатель).
-        collected = PriceUpdateService._collect_products_parallel(competitors)
+        collected = PriceUpdateService._collect_products_parallel(competitors, respect_rate_limit=respect_rate_limit)
 
         results = []
         success_count = 0
@@ -333,7 +347,8 @@ class PriceUpdateService:
 
         for competitor in competitors:
             result = PriceUpdateService.update_competitor_prices(
-                competitor.id, prefetched_products=collected.get(competitor.id)
+                competitor.id, prefetched_products=collected.get(competitor.id),
+                respect_rate_limit=respect_rate_limit
             )
             results.append(result)
 
@@ -447,6 +462,25 @@ class PriceUpdateService:
                     })
         events.sort(key=lambda e: e['date'], reverse=True)
         return events
+
+    @staticmethod
+    def update_all_analyses_prices():
+        """Системное обновление цен по ВСЕМ анализам всех клиентов (для ночного
+        планировщика). Игнорирует лимит «раз в 3 минуты». Возвращает сводку."""
+        analyses = Analysis.query.all()
+        total = len(analyses)
+        ok = 0
+        failed = 0
+        print(f"[SCHEDULER] Старт ночного обновления цен: анализов {total}")
+        for a in analyses:
+            try:
+                PriceUpdateService.update_analysis_prices(a.id, respect_rate_limit=False)
+                ok += 1
+            except Exception as e:
+                failed += 1
+                print(f"[SCHEDULER] Анализ {a.id}: ошибка обновления — {e}")
+        print(f"[SCHEDULER] Готово: обработано {ok}/{total}, с ошибками {failed}")
+        return {'total': total, 'ok': ok, 'failed': failed}
 
     @staticmethod
     def update_user_analyses_prices(user_id):

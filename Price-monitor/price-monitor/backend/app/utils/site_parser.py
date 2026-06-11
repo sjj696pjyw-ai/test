@@ -502,7 +502,14 @@ class SiteParser:
             # из JS-страницы — иначе теряем товары, доступные только в браузере.
             scrolled_base = self.get_page(url, scroll_selector=name_selector, scroll=True)
             base_full = scrolled_base or base_html
-            add(self.parse_products(base_full, name_selector, price_selector))
+            scrolled_products = self.parse_products(base_full, name_selector, price_selector)
+            add(scrolled_products)
+            # SPA — это сайт, у которого прокрутка добавила товаров (бесконечная
+            # подгрузка). Только для таких имеет смысл МЕДЛЕННАЯ браузерная версия
+            # страниц пагинации (там в JS лежит то, чего нет в requests). Для
+            # обычных серверных сайтов (включая страницы одного товара с ложным
+            # ?page) браузерный фолбэк по страницам не нужен — он только тормозит.
+            is_spa = len(scrolled_products) > len(base_products)
             max_page = self._detect_max_page(base_full, param) or self._detect_max_page(base_html, param)
 
             # Обход страниц ПО ПОРЯДКУ (без предварительного массового фетча):
@@ -520,12 +527,16 @@ class SiteParser:
                     prods = self.parse_products(html, name_selector, price_selector) if html else []
                     added = add(prods) if prods else 0
                     if added == 0:
-                        # requests не дал новых — пробуем браузерную версию страницы
-                        bhtml = self.get_page(u, scroll_selector=name_selector, scroll=False)
-                        bprods = self.parse_products(bhtml, name_selector, price_selector) if bhtml else []
-                        if not prods and not bprods:
-                            break  # страница пуста в обеих версиях — конец каталога
-                        added = add(bprods) if bprods else 0
+                        if is_spa:
+                            # SPA: JS-версия страницы может вернуть товары, которых
+                            # нет в requests (медленно, но только здесь оправдано).
+                            bhtml = self.get_page(u, scroll_selector=name_selector, scroll=False)
+                            bprods = self.parse_products(bhtml, name_selector, price_selector) if bhtml else []
+                            if not prods and not bprods:
+                                break  # страница пуста в обеих версиях — конец
+                            added = add(bprods) if bprods else 0
+                        elif not prods:
+                            break  # не SPA и requests пусто — конец каталога
                     if added:
                         zero_streak = 0
                     else:

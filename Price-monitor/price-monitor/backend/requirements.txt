@@ -12,3 +12,4 @@ lxml==5.3.0
 fake-useragent
 email-validator==2.2.0
 selenium==4.27.1
+APScheduler==3.10.4

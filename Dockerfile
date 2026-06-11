@@ -35,6 +35,11 @@ ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
 # Отключить Selenium и работать только через requests можно так: PARSER_USE_SELENIUM=0
 ENV PARSER_USE_SELENIUM=1
+# Ночное автообновление цен (19:30 UTC по всем анализам). Замки — на томе /data.
+ENV ENABLE_SCHEDULER=1
+ENV SCHEDULER_LOCK_DIR=/data
+# Сколько браузеров поднимать параллельно при сборе (≈ числу ядер CPU). Для 2 ядер — 2.
+ENV COLLECT_MAX_WORKERS=2
 
 EXPOSE 5000
 
@@ -43,4 +48,4 @@ EXPOSE 5000
 #   остаётся висеть (утечка памяти).
 # --graceful-timeout 30 + --max-requests: периодически перезапускаем воркеров,
 #   чтобы подчистить возможные осиротевшие процессы/память браузера.
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "180", "--graceful-timeout", "30", "--max-requests", "200", "--max-requests-jitter", "40", "main:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "3", "--timeout", "180", "--graceful-timeout", "30", "--max-requests", "200", "--max-requests-jitter", "40", "main:app"]
