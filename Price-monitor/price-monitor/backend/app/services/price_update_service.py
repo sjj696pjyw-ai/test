@@ -24,48 +24,58 @@ class PriceUpdateService:
         return True, None
     
     @staticmethod
-    def _prefetch_pages(competitors):
+    def _collect_products_parallel(competitors):
         """
-        Параллельно загружает HTML страниц конкурентов, которые реально будут
-        парситься (есть селекторы и не под рейт-лимитом). Только сеть, без БД —
-        безопасно для потоков. Возвращает {competitor_id: html|None}.
+        ПАРАЛЛЕЛЬНО собирает товары конкурентов (полный сбор: пагинация/прокрутка),
+        только сеть/скрейпинг — БЕЗ обращения к БД, безопасно для потоков.
+        Возвращает {competitor_id: products|None}. Запись в БД делается отдельно,
+        последовательно (SQLite — один писатель).
         """
         from concurrent.futures import ThreadPoolExecutor
+        import os as _os
 
-        def fetch(comp):
-            if not comp.title_selector or not comp.price_selector:
-                return comp.id, None
-            can_update, _ = PriceUpdateService.can_update_competitor(comp)
+        # Готовим «плоские» задания заранее (в основном потоке), чтобы в потоках
+        # не обращаться к ORM-объектам.
+        targets = []
+        for c in competitors:
+            if not c.title_selector or not c.price_selector:
+                continue
+            can_update, _ = PriceUpdateService.can_update_competitor(c)
             if not can_update:
-                return comp.id, None
-            url = comp.domain
+                continue
+            url = c.domain
             if not url.startswith(('http://', 'https://')):
                 url = f'https://{url}'
-            try:
-                # База без прокрутки — способ сбора определят тиры в parse_products_paginated
-                return comp.id, SiteParser().get_page(url, scroll_selector=comp.title_selector, scroll=False)
-            except Exception:
-                return comp.id, None
+            targets.append((c.id, url, c.title_selector, c.price_selector))
 
-        eligible = [c for c in competitors if c.title_selector and c.price_selector]
-        if not eligible:
+        if not targets:
             return {}
-        prefetched = {}
-        # С Selenium каждый воркер поднимает отдельный браузер — это тяжело по
-        # памяти, поэтому ограничиваем параллелизм. На requests можно больше.
-        import os as _os
+
+        def scrape(task):
+            cid, url, title, price = task
+            try:
+                return cid, SiteParser().parse_products_paginated(url, title, price)
+            except Exception as e:
+                print(f"[parallel collect] competitor {cid} error: {e}")
+                return cid, None
+
+        # С Selenium каждый воркер может поднять браузер — ограничиваем, чтобы не
+        # съесть память; на requests-сайтах потоки лёгкие.
         use_selenium = _os.environ.get('PARSER_USE_SELENIUM', '1') != '0'
-        worker_cap = 2 if use_selenium else 8
-        with ThreadPoolExecutor(max_workers=min(worker_cap, len(eligible))) as ex:
-            for cid, html in ex.map(fetch, eligible):
-                prefetched[cid] = html
-        return prefetched
+        worker_cap = 3 if use_selenium else 8
+        out = {}
+        with ThreadPoolExecutor(max_workers=min(worker_cap, len(targets))) as ex:
+            for cid, prods in ex.map(scrape, targets):
+                out[cid] = prods
+        return out
 
     @staticmethod
-    def update_competitor_prices(competitor_id, prefetched_html=None):
+    def update_competitor_prices(competitor_id, prefetched_html=None, prefetched_products=None):
         """
         Update prices for a single competitor.
-        prefetched_html — заранее загруженный HTML (для параллельной загрузки страниц).
+        prefetched_html — заранее загруженный HTML первой страницы.
+        prefetched_products — уже собранные товары (параллельный сбор): если
+            переданы, скрейпинг пропускается, идёт только запись в БД.
         Returns dict with status, updated_count, errors, etc.
         """
         competitor = Competitor.query.get(competitor_id)
@@ -121,43 +131,44 @@ class PriceUpdateService:
                 'status': 'no_selectors'
             }
 
-        # Build URL from domain
-        url = competitor.domain
-        if not url.startswith(('http://', 'https://')):
-            url = f'https://{url}'
+        if prefetched_products is not None:
+            # Товары уже собраны заранее (параллельный сбор) — скрейпинг пропускаем
+            products_data = prefetched_products
+        else:
+            # Build URL from domain
+            url = competitor.domain
+            if not url.startswith(('http://', 'https://')):
+                url = f'https://{url}'
 
-        print(f"[DEBUG] Updating prices for competitor {competitor_id}, domain: {competitor.domain}, url: {url}")
-        print(f"[DEBUG] Selectors - title: {competitor.title_selector}, price: {competitor.price_selector}")
+            print(f"[DEBUG] Updating prices for competitor {competitor_id}, domain: {competitor.domain}, url: {url}")
+            print(f"[DEBUG] Selectors - title: {competitor.title_selector}, price: {competitor.price_selector}")
 
-        # Parse the site (используем заранее загруженный HTML первой страницы,
-        # если он есть; проверка доступности — по первой странице).
-        parser = SiteParser()
-        first_html = prefetched_html if prefetched_html is not None else parser.get_page(url, scroll_selector=competitor.title_selector, scroll=False)
+            # Parse the site (используем заранее загруженный HTML первой страницы,
+            # если он есть; проверка доступности — по первой странице).
+            parser = SiteParser()
+            first_html = prefetched_html if prefetched_html is not None else parser.get_page(url, scroll_selector=competitor.title_selector, scroll=False)
 
-        if not first_html:
-            print(f"[DEBUG] Failed to get HTML from {url}")
-            competitor.update_status = 'error'
-            competitor.update_error_message = 'Сайт не отвечает или недоступен'
-            db.session.commit()
+            if not first_html:
+                print(f"[DEBUG] Failed to get HTML from {url}")
+                competitor.update_status = 'error'
+                competitor.update_error_message = 'Сайт не отвечает или недоступен'
+                db.session.commit()
 
-            return {
-                'success': False,
-                'error': 'Сайт не отвечает',
-                'status': 'site_unavailable',
-                'competitor_id': competitor_id,
-                'competitor_domain': competitor.domain
-            }
+                return {
+                    'success': False,
+                    'error': 'Сайт не отвечает',
+                    'status': 'site_unavailable',
+                    'competitor_id': competitor_id,
+                    'competitor_domain': competitor.domain
+                }
 
-        print(f"[DEBUG] Got HTML, length: {len(first_html)}")
+            products_data = parser.parse_products_paginated(
+                url,
+                competitor.title_selector,
+                competitor.price_selector,
+                first_html=first_html
+            )
 
-        # Parse products со всех страниц (обход пагинации), первую переиспользуем
-        products_data = parser.parse_products_paginated(
-            url,
-            competitor.title_selector,
-            competitor.price_selector,
-            first_html=first_html
-        )
-        
         print(f"[DEBUG] Parsed {len(products_data)} products")
         
         if not products_data:
@@ -285,10 +296,33 @@ class PriceUpdateService:
                 'error': 'Конкуренты не найдены',
                 'results': []
             }
-        
-        # Параллельно загружаем страницы конкурентов (только сеть, без БД),
+
+        # Если хотя бы один конкурент ещё под рейт-лимитом — не обновляем НИЧЕГО.
+        # Обновление доступно раз в 3 минуты, и сразу по всем (чтобы не падать в
+        # ошибку из-за одного сайта).
+        wait_minutes = []
+        for c in competitors:
+            ok, _ = PriceUpdateService.can_update_competitor(c)
+            if not ok and c.last_price_update:
+                remaining = PriceUpdateService.MIN_UPDATE_INTERVAL_MINUTES - (
+                    (datetime.utcnow() - c.last_price_update).total_seconds() / 60
+                )
+                wait_minutes.append(remaining)
+        if wait_minutes:
+            wait = max(1, int(round(max(wait_minutes))))
+            msg = f'Обновление цен доступно раз в 3 минуты. Попробуйте через {wait} мин.'
+            return {
+                'success': False,
+                'status': 'rate_limited',
+                'overall_status': 'rate_limited',   # фронт читает overall_status
+                'rate_limited_message': msg,
+                'error': msg,
+                'results': []
+            }
+
+        # ПАРАЛЛЕЛЬНО собираем товары всех конкурентов (только скрейпинг, без БД),
         # а изменения в БД применяем последовательно (SQLite — один писатель).
-        prefetched = PriceUpdateService._prefetch_pages(competitors)
+        collected = PriceUpdateService._collect_products_parallel(competitors)
 
         results = []
         success_count = 0
@@ -299,7 +333,7 @@ class PriceUpdateService:
 
         for competitor in competitors:
             result = PriceUpdateService.update_competitor_prices(
-                competitor.id, prefetched_html=prefetched.get(competitor.id)
+                competitor.id, prefetched_products=collected.get(competitor.id)
             )
             results.append(result)
 

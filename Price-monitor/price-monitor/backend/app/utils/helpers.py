@@ -93,6 +93,12 @@ def setup_selenium_options(options):
     options.add_argument('--window-size=1280,1024')
     options.add_argument(f'user-agent={REAL_UA}')
     options.add_argument('--disable-blink-features=AutomationControlled')
+    # Снижаем потребление памяти и ускоряем загрузку: для скрейпинга картинки и
+    # расширения не нужны.
+    options.add_argument('--blink-settings=imagesEnabled=false')
+    options.add_argument('--disable-extensions')
+    options.add_argument('--disable-notifications')
+    options.add_argument('--mute-audio')
     options.add_experimental_option('excludeSwitches', ['enable-automation'])
     options.add_experimental_option('useAutomationExtension', False)
     return options

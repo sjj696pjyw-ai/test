@@ -137,13 +137,27 @@ class SiteParser:
             # Переиспользуемый драйвер мог «умереть» — сбрасываем, чтобы пересоздать
             if self._reuse_driver:
                 self.close()
-            # Браузер/драйвер вообще не поднимается — выключаем Selenium на весь
-            # процесс и дальше работаем через requests.
-            if any(k in msg.lower() for k in (
-                'executable', 'no such file', 'cannot find', 'not found',
-                'chromedriver', 'session not created', 'unable to', 'winerror',
-                'module named', 'modulenotfound'
-            )):
+
+            # Selenium на ВЕСЬ процесс выключаем только если он принципиально
+            # недоступен (нет пакета selenium или браузера/драйвера). Разовые
+            # ошибки страницы — таймаут рендерера, упавшая вкладка и т.п. — НЕ
+            # повод отключать браузер: просто этот URL берём через requests.
+            low = msg.lower()
+            transient = any(k in low for k in (
+                'timed out', 'timeout', 'renderer', 'target crashed',
+                'tab crashed', 'disconnected', 'no such window', 'connection refused',
+            ))
+            fatal = (
+                isinstance(e, (ImportError, ModuleNotFoundError))
+                or 'no module named' in low
+                or 'cannot find chrome' in low
+                or 'chrome binary' in low
+                or 'chrome failed to start' in low
+                or 'cannot find chromedriver' in low
+                or 'executable needs to be in path' in low
+                or 'unable to obtain' in low
+            )
+            if fatal and not transient:
                 _SELENIUM_DISABLED = True
                 print("[INFO] Selenium недоступен — переключаюсь на requests до перезапуска процесса.")
             return None
@@ -198,8 +212,6 @@ class SiteParser:
             if marker == last_marker:
                 stable += 1
                 if stable >= 2:
-                    # прокрутка ничего не даёт — один раз пробуем кнопку догрузки.
-                    # Если на этом состоянии уже жали — прогресса нет, выходим.
                     if marker in clicked_at:
                         break
                     clicked_at.add(marker)

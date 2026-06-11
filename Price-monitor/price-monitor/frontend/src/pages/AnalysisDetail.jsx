@@ -7,6 +7,14 @@ import { exportToExcel, exportToCSV, formatPrice, formatDate } from '../utils/ex
 import { PriceDynamicsChart } from '../components/PriceDynamicsChart'
 import { useToast } from '../context/ToastContext'
 
+// Правильное склонение слова «товар» по числу: 1 товар, 2 товара, 5 товаров
+const productPlural = (n) => {
+  const m10 = n % 10, m100 = n % 100
+  if (m10 === 1 && m100 !== 11) return 'товар'
+  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return 'товара'
+  return 'товаров'
+}
+
 const DEMO_DATA = {
   2: {
     id: 2, analysis_type: 'manual', region: '2',
@@ -759,10 +767,10 @@ export default function AnalysisDetail() {
                       <span className="font-medium text-gray-900 dark:text-white">Ваш сайт</span>
                     )}
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                      {userCompetitor.products?.length || 0} товаров • Ваш сайт
+                      {userCompetitor.products?.length || 0} {productPlural(userCompetitor.products?.length || 0)}
                       {userCompetitor.last_price_update && (
-                        <span className="ml-2 text-xs">
-                          Цены актуальны на {new Date(userCompetitor.last_price_update).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })} {new Date(userCompetitor.last_price_update).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} (UTC)
+                        <span className="ml-2">
+                          • Цены актуальны на {new Date(userCompetitor.last_price_update).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })} {new Date(userCompetitor.last_price_update).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} (UTC)
                         </span>
                       )}
                     </p>
@@ -1144,10 +1152,10 @@ export default function AnalysisDetail() {
                         {comp.domain}
                       </a>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {comp.products?.length || 0} товаров • {comp.competitor_type}
+                        {comp.products?.length || 0} {productPlural(comp.products?.length || 0)}{comp.competitor_type ? ` • ${comp.competitor_type}` : ''}
                         {comp.last_price_update && (
-                          <span className="ml-2 text-xs">
-                            Цены актуальны на {new Date(comp.last_price_update).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })} {new Date(comp.last_price_update).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} (UTC)
+                          <span className="ml-2">
+                            • Цены актуальны на {new Date(comp.last_price_update).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })} {new Date(comp.last_price_update).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} (UTC)
                           </span>
                         )}
                       </p>

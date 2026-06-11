@@ -319,7 +319,14 @@ def update_analysis_prices(analysis_id):
         return jsonify({'error': 'Анализ не найден'}), 404
     
     result = PriceUpdateService.update_analysis_prices(analysis_id)
-    
+
+    # Рейт-лимит — это не ошибка: отдаём сообщение со статусом 200
+    if result.get('status') == 'rate_limited':
+        return jsonify({
+            'message': result.get('error', 'Обновление цен доступно раз в 3 минуты.'),
+            'result': result
+        }), 200
+
     if result['success']:
         status_code = 200
         message = 'Цены успешно обновлены'
@@ -328,7 +335,7 @@ def update_analysis_prices(analysis_id):
     else:
         status_code = 400
         message = result.get('error', 'Ошибка обновления цен')
-    
+
     return jsonify({
         'message': message,
         'result': result

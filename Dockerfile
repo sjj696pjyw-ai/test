@@ -38,4 +38,9 @@ ENV PARSER_USE_SELENIUM=1
 
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "main:app"]
+# --timeout 180: Selenium-сбор (прокрутка/пагинация) может идти дольше дефолтных
+#   30 с — иначе gunicorn убивает воркера SIGKILL'ом посреди сессии и Chrome
+#   остаётся висеть (утечка памяти).
+# --graceful-timeout 30 + --max-requests: периодически перезапускаем воркеров,
+#   чтобы подчистить возможные осиротевшие процессы/память браузера.
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "180", "--graceful-timeout", "30", "--max-requests", "200", "--max-requests-jitter", "40", "main:app"]
