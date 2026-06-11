@@ -55,9 +55,12 @@ class PriceUpdateService:
         def scrape(task):
             cid, url, title, price = task
             try:
-                return cid, SiteParser().parse_products_paginated(url, title, price)
+                print(f"[СБОР] старт: {url}")
+                prods = SiteParser().parse_products_paginated(url, title, price)
+                print(f"[СБОР] готово: {url} — товаров {len(prods) if prods else 0}")
+                return cid, prods
             except Exception as e:
-                print(f"[parallel collect] competitor {cid} error: {e}")
+                print(f"[СБОР] ошибка: {url} — {e}")
                 return cid, None
 
         # С Selenium каждый воркер может поднять браузер — ограничиваем, чтобы не
@@ -346,6 +349,20 @@ class PriceUpdateService:
         skipped_count = 0  # конкуренты без настроенных селекторов — это не ошибка
 
         for competitor in competitors:
+            # Сайт конкурента без настроенных селекторов — не пытаемся обновлять.
+            # (Свой сайт без селекторов остаётся: там просто фиксируется текущая
+            #  цена в историю — это делает update_competitor_prices.)
+            if (not competitor.title_selector or not competitor.price_selector) and not competitor.is_user_site:
+                print(f"[ОБНОВЛЕНИЕ] {competitor.domain}: пропуск — селекторы не настроены")
+                results.append({
+                    'success': False,
+                    'status': 'no_selectors',
+                    'competitor_id': competitor.id,
+                    'competitor_domain': competitor.domain,
+                })
+                skipped_count += 1
+                continue
+
             result = PriceUpdateService.update_competitor_prices(
                 competitor.id, prefetched_products=collected.get(competitor.id),
                 respect_rate_limit=respect_rate_limit
@@ -353,16 +370,23 @@ class PriceUpdateService:
             results.append(result)
 
             status = result.get('status')
+            dom = result.get('competitor_domain', competitor.domain)
             if status == 'success':
                 success_count += 1
+                print(f"[ОБНОВЛЕНИЕ] {dom}: ✓ обновлено "
+                      f"(обновлено {result.get('updated_count', 0)}, создано {result.get('created_count', 0)})")
             elif status == 'partial':
                 partial_count += 1
+                print(f"[ОБНОВЛЕНИЕ] {dom}: ⚠ частично — {result.get('error') or 'часть товаров не найдена'}")
             elif status == 'rate_limited':
                 rate_limited_count += 1
+                print(f"[ОБНОВЛЕНИЕ] {dom}: пропуск — рейт-лимит")
             elif status == 'no_selectors':
                 skipped_count += 1
+                print(f"[ОБНОВЛЕНИЕ] {dom}: пропуск — селекторы не настроены")
             else:
                 error_count += 1
+                print(f"[ОБНОВЛЕНИЕ] {dom}: ✗ НЕ УДАЛОСЬ ({status}) — {result.get('error') or 'неизвестная ошибка'}")
 
         # Сколько конкурентов реально обновилось
         updated = success_count + partial_count

@@ -171,9 +171,11 @@ class SiteParsingService:
         cache_key = _collect_cache_key(competitor_id, url, title_selector, price_selector)
         products = _collect_cache_get(cache_key)
         if products is None:
+            print(f"[СБОР] старт: {url}")
             parser = SiteParser()
             # Собираем товары со всех страниц каталога (обход пагинации по URL)
             products = parser.parse_products_paginated(url, title_selector, price_selector)
+            print(f"[СБОР] готово: {url} — товаров {len(products) if products else 0}")
         else:
             print(f"[DEBUG] Сбор: переиспользую {len(products)} товаров из кэша проверки")
 
