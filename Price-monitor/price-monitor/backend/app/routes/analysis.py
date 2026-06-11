@@ -207,7 +207,7 @@ def update_competitor(competitor_id):
     title_selector = data.get('title_selector')
     price_selector = data.get('price_selector')
     url = data.get('url')  # Optional: update catalog URL
-    
+
     competitor = CompetitorService.update_selectors(competitor_id, title_selector, price_selector, url)
     
     if not competitor:
@@ -236,10 +236,10 @@ def parse_competitor(competitor_id):
     url = data.get('url')
     title_selector = data.get('title_selector')
     price_selector = data.get('price_selector')
-    
+
     if not all([url, title_selector, price_selector]):
         return jsonify({'error': 'URL and selectors are required'}), 400
-    
+
     products = SiteParsingService.parse_competitor_site(
         competitor_id=competitor_id,
         url=url,
@@ -264,14 +264,14 @@ def verify_selectors(competitor_id):
     url = data.get('url')
     title_selector = data.get('title_selector')
     price_selector = data.get('price_selector')
-    
+
     result = SiteParsingService.verify_selectors(
         competitor_id=competitor_id,
         url=url,
         title_selector=title_selector,
         price_selector=price_selector
     )
-    
+
     return jsonify(result), 200
 
 

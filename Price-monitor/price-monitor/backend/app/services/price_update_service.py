@@ -42,7 +42,8 @@ class PriceUpdateService:
             if not url.startswith(('http://', 'https://')):
                 url = f'https://{url}'
             try:
-                return comp.id, SiteParser().get_page(url)
+                # База без прокрутки — способ сбора определят тиры в parse_products_paginated
+                return comp.id, SiteParser().get_page(url, scroll_selector=comp.title_selector, scroll=False)
             except Exception:
                 return comp.id, None
 
@@ -50,7 +51,12 @@ class PriceUpdateService:
         if not eligible:
             return {}
         prefetched = {}
-        with ThreadPoolExecutor(max_workers=min(8, len(eligible))) as ex:
+        # С Selenium каждый воркер поднимает отдельный браузер — это тяжело по
+        # памяти, поэтому ограничиваем параллелизм. На requests можно больше.
+        import os as _os
+        use_selenium = _os.environ.get('PARSER_USE_SELENIUM', '1') != '0'
+        worker_cap = 2 if use_selenium else 8
+        with ThreadPoolExecutor(max_workers=min(worker_cap, len(eligible))) as ex:
             for cid, html in ex.map(fetch, eligible):
                 prefetched[cid] = html
         return prefetched
@@ -94,11 +100,11 @@ class PriceUpdateService:
                         currency=product.currency
                     )
                     db.session.add(price_history)
-                
+
                 competitor.last_price_update = datetime.utcnow()
                 competitor.update_status = 'success'
                 db.session.commit()
-                
+
                 return {
                     'success': True,
                     'status': 'success',
@@ -114,25 +120,26 @@ class PriceUpdateService:
                 'error': 'Селекторы не настроены',
                 'status': 'no_selectors'
             }
-        
+
         # Build URL from domain
         url = competitor.domain
         if not url.startswith(('http://', 'https://')):
             url = f'https://{url}'
-        
+
         print(f"[DEBUG] Updating prices for competitor {competitor_id}, domain: {competitor.domain}, url: {url}")
         print(f"[DEBUG] Selectors - title: {competitor.title_selector}, price: {competitor.price_selector}")
-        
-        # Parse the site (используем заранее загруженный HTML, если он есть)
-        parser = SiteParser()
-        html = prefetched_html if prefetched_html is not None else parser.get_page(url)
 
-        if not html:
+        # Parse the site (используем заранее загруженный HTML первой страницы,
+        # если он есть; проверка доступности — по первой странице).
+        parser = SiteParser()
+        first_html = prefetched_html if prefetched_html is not None else parser.get_page(url, scroll_selector=competitor.title_selector, scroll=False)
+
+        if not first_html:
             print(f"[DEBUG] Failed to get HTML from {url}")
             competitor.update_status = 'error'
             competitor.update_error_message = 'Сайт не отвечает или недоступен'
             db.session.commit()
-            
+
             return {
                 'success': False,
                 'error': 'Сайт не отвечает',
@@ -140,14 +147,15 @@ class PriceUpdateService:
                 'competitor_id': competitor_id,
                 'competitor_domain': competitor.domain
             }
-        
-        print(f"[DEBUG] Got HTML, length: {len(html)}")
-        
-        # Parse products
-        products_data = parser.parse_products(
-            html, 
-            competitor.title_selector, 
-            competitor.price_selector
+
+        print(f"[DEBUG] Got HTML, length: {len(first_html)}")
+
+        # Parse products со всех страниц (обход пагинации), первую переиспользуем
+        products_data = parser.parse_products_paginated(
+            url,
+            competitor.title_selector,
+            competitor.price_selector,
+            first_html=first_html
         )
         
         print(f"[DEBUG] Parsed {len(products_data)} products")

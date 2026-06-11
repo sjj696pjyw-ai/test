@@ -1,5 +1,32 @@
+import time
+from datetime import datetime
 from ..models import db, Analysis, Competitor, Product, ProductLink, PriceHistory
 from ..utils import SiteParser
+
+
+# Короткоживущий кэш собранных товаров: «Проверить селекторы» уже собирает
+# товары — переиспользуем их при «Сохранить и собрать», чтобы не скрейпить заново.
+_COLLECT_CACHE = {}
+_COLLECT_TTL = 180  # секунды
+
+
+def _collect_cache_key(competitor_id, url, title_selector, price_selector):
+    return (competitor_id, url or '', title_selector or '', price_selector or '')
+
+
+def _collect_cache_get(key):
+    entry = _COLLECT_CACHE.get(key)
+    if entry and (time.time() - entry[0]) < _COLLECT_TTL:
+        return entry[1]
+    return None
+
+
+def _collect_cache_set(key, products):
+    # чистим протухшие записи, чтобы кэш не разрастался
+    now = time.time()
+    for k in [k for k, v in _COLLECT_CACHE.items() if now - v[0] >= _COLLECT_TTL]:
+        _COLLECT_CACHE.pop(k, None)
+    _COLLECT_CACHE[key] = (now, products)
 
 
 class AnalysisService:
@@ -139,14 +166,20 @@ class ProductLinkService:
 class SiteParsingService:
     @staticmethod
     def parse_competitor_site(competitor_id, url, title_selector, price_selector):
-        parser = SiteParser()
-        html = parser.get_page(url)
-        
-        if not html:
+        # Если только что собирали те же товары при проверке селекторов —
+        # переиспользуем результат (сохранение становится почти мгновенным).
+        cache_key = _collect_cache_key(competitor_id, url, title_selector, price_selector)
+        products = _collect_cache_get(cache_key)
+        if products is None:
+            parser = SiteParser()
+            # Собираем товары со всех страниц каталога (обход пагинации по URL)
+            products = parser.parse_products_paginated(url, title_selector, price_selector)
+        else:
+            print(f"[DEBUG] Сбор: переиспользую {len(products)} товаров из кэша проверки")
+
+        if not products:
             return []
-        
-        products = parser.parse_products(html, title_selector, price_selector)
-        
+
         competitor = Competitor.query.get(competitor_id)
         if competitor:
             competitor.title_selector = title_selector
@@ -154,6 +187,9 @@ class SiteParsingService:
             # Указанная ссылка становится текущим сайтом (заменяет прежнюю)
             if url:
                 competitor.domain = url
+            # Момент сбора = момент актуальности цен (показывается «Цены актуальны на…»)
+            competitor.last_price_update = datetime.utcnow()
+            competitor.update_status = 'success'
 
         # Обновляем существующие товары по имени на месте, а не создаём дубли.
         # Иначе связи (ProductLink) продолжают указывать на старый товар со
@@ -198,9 +234,42 @@ class SiteParsingService:
     @staticmethod
     def verify_selectors(competitor_id, url, title_selector, price_selector):
         parser = SiteParser()
-        html = parser.get_page(url)
-        
-        if not html:
-            return {'valid': False, 'name_count': 0, 'price_count': 0}
-        
-        return parser.verify_selectors(html, title_selector, price_selector)
+        # Базу грузим БЕЗ прокрутки — способ сбора определяется по тирам внутри
+        # parse_products_paginated (пагинация → showall → прокрутка).
+        first_html = parser.get_page(url, scroll_selector=title_selector, scroll=False)
+
+        if not first_html:
+            return {'valid': False, 'name_count': 0, 'price_count': 0, 'product_count': 0}
+
+        # Базовые счётчики и примеры — по первой странице
+        result = parser.verify_selectors(first_html, title_selector, price_selector)
+
+        # Реальный итог — по всем страницам (обход пагинации с дедупом),
+        # первую страницу переиспользуем, чтобы не грузить её повторно.
+        all_products = parser.parse_products_paginated(
+            url, title_selector, price_selector, first_html=first_html
+        )
+        # Кэшируем собранные товары, чтобы «Сохранить и собрать» не скрейпил заново
+        _collect_cache_set(
+            _collect_cache_key(competitor_id, url, title_selector, price_selector),
+            all_products
+        )
+        total = len(all_products)
+        page1_count = result.get('product_count', total)
+        result['product_count'] = total
+        result['page1_product_count'] = page1_count
+
+        # Счётчики «совпадений названий/цен» — итоговое (дедупнутое) число
+        # собранных товаров, чтобы совпадали с «Будет собрано».
+        result['name_count'] = total
+        result['price_count'] = total
+
+        if total > page1_count:
+            # Это НЕ предупреждение, а просто факт многостраничного каталога —
+            # отдаём отдельным нейтральным полем, не трогая mismatch_warning.
+            result['pagination_note'] = (
+                f'Каталог многостраничный: на первой странице {page1_count} товаров, '
+                f'со всех страниц будет собрано {total}.'
+            )
+
+        return result

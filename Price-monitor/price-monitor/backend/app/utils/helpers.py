@@ -86,9 +86,10 @@ def get_default_headers():
 
 def setup_selenium_options(options):
     """Настраивает общие опции для Selenium WebDriver."""
-    options.add_argument('--headless')
+    options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1280,1024')
     options.add_argument(f'user-agent={REAL_UA}')
     options.add_argument('--disable-blink-features=AutomationControlled')

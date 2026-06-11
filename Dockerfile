@@ -14,6 +14,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
+    chromium \
+    chromium-driver \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 COPY Price-monitor/price-monitor/backend/requirements.txt ./
@@ -27,6 +30,11 @@ COPY --from=frontend /fe/dist /app/frontend_dist
 ENV FLASK_APP=main.py
 ENV PYTHONUNBUFFERED=1
 ENV FRONTEND_DIST=/app/frontend_dist
+# Браузер для Selenium (парсинг JS-сайтов с прокруткой)
+ENV CHROME_BIN=/usr/bin/chromium
+ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
+# Отключить Selenium и работать только через requests можно так: PARSER_USE_SELENIUM=0
+ENV PARSER_USE_SELENIUM=1
 
 EXPOSE 5000
 
