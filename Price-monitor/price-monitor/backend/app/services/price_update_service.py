@@ -113,9 +113,20 @@ class PriceUpdateService:
         
         # Check if selectors are configured (skip for user site without selectors - use current price)
         if not competitor.title_selector or not competitor.price_selector:
-            # For user site without selectors, just record current price as history
+            # Свой сайт без селекторов: фиксируем текущие цены в историю — но
+            # ТОЛЬКО если товары вообще есть. Иначе обновлять нечего: не трогаем
+            # last_price_update (иначе пишется «Цены актуальны на…» на пустом).
             if competitor.is_user_site:
                 products = Product.query.filter_by(competitor_id=competitor_id).all()
+                if not products:
+                    print(f"[DEBUG] Competitor {competitor_id} (свой сайт): нет товаров и селекторов — пропуск")
+                    return {
+                        'success': False,
+                        'status': 'no_products',
+                        'competitor_id': competitor_id,
+                        'competitor_domain': competitor.domain,
+                        'is_user_site': True
+                    }
                 for product in products:
                     # Record current price to history
                     price_history = PriceHistory(

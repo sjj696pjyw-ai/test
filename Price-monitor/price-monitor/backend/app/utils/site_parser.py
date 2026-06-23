@@ -177,7 +177,7 @@ class SiteParser:
                 pass
             self._driver = None
 
-    def _auto_scroll(self, driver, scroll_selector=None, max_rounds=25, pause=0.7):
+    def _auto_scroll(self, driver, scroll_selector=None, max_rounds=25, pause=0.7, max_seconds=12.0):
         """Прокручивает страницу для ленивой подгрузки товаров.
 
         Если задан scroll_selector — на каждом шаге скроллит к ПОСЛЕДНЕЙ карточке
@@ -191,7 +191,10 @@ class SiteParser:
         last_marker = None
         stable = 0
         clicked_at = set()  # состояния, на которых уже жали «показать ещё»
+        deadline = time.monotonic() + max_seconds
         for _ in range(max_rounds):
+            if time.monotonic() > deadline:
+                break  # жёсткий лимит по времени — не зависаем на «живых» страницах
             count = 0
             if scroll_selector:
                 # скроллим к последней найденной карточке и заодно считаем их
@@ -207,8 +210,16 @@ class SiteParser:
             if not scroll_selector or count == 0:
                 driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
             time.sleep(pause)
-            height = driver.execute_script("return document.body.scrollHeight")
-            marker = (count, height)  # прогресс: число карточек + высота
+            # Прогресс меряем по ЧИСЛУ ТОВАРОВ (если есть селектор), а не по высоте:
+            # высота на тяжёлых сайтах «прыгает» из-за рекламы/каруселей/ленивых
+            # картинок и даёт ложный прогресс — из-за этого прокрутка крутила зря.
+            if scroll_selector:
+                marker = count
+            else:
+                try:
+                    marker = driver.execute_script("return document.body.scrollHeight")
+                except Exception:
+                    marker = None
             if marker == last_marker:
                 stable += 1
                 if stable >= 2:

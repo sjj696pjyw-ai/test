@@ -4,7 +4,6 @@ WORKDIR /fe
 COPY Price-monitor/price-monitor/frontend/package.json Price-monitor/price-monitor/frontend/package-lock.json ./
 RUN npm ci
 COPY Price-monitor/price-monitor/frontend/ ./
-# VITE_API_URL не задаём — фронт и API на одном домене, baseURL = '/api'
 RUN npm run build
 
 # ---------- Этап 2: бэкенд + раздача фронта ----------

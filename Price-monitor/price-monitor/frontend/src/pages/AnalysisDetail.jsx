@@ -15,6 +15,9 @@ const productPlural = (n) => {
   return 'товаров'
 }
 
+// Домен для показа: без http(s):// и без хвостового слэша (ссылка остаётся полной)
+const cleanUrl = (u) => (u || '').replace(/^https?:\/\//, '').replace(/\/+$/, '')
+
 const DEMO_DATA = {
   2: {
     id: 2, analysis_type: 'manual', region: '2',
@@ -761,7 +764,7 @@ export default function AnalysisDetail() {
                         rel="noopener noreferrer"
                         className="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 hover:underline"
                       >
-                        {userCompetitor.domain || analysis.user_site}
+                        {cleanUrl(userCompetitor.domain || analysis.user_site)}
                       </a>
                     ) : (
                       <span className="font-medium text-gray-900 dark:text-white">Ваш сайт</span>
@@ -888,7 +891,15 @@ export default function AnalysisDetail() {
                 </span>
               ) : (
                 <button
-                  onClick={() => setLinkingMode('user')}
+                  onClick={() => {
+                    const hasUser = (userCompetitor?.products?.length || 0) > 0
+                    const hasCompetitor = competitorList.some(c => (c.products?.length || 0) > 0)
+                    if (!hasUser || !hasCompetitor) {
+                      showError('Сначала настройте селекторы и соберите товары — по вашему сайту и хотя бы одному конкуренту')
+                      return
+                    }
+                    setLinkingMode('user')
+                  }}
                   className="btn-primary flex items-center space-x-2"
                 >
                   <LinkIcon className="h-4 w-4" />
@@ -1149,7 +1160,7 @@ export default function AnalysisDetail() {
                         rel="noopener noreferrer"
                         className="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 hover:underline"
                       >
-                        {comp.domain}
+                        {cleanUrl(comp.domain)}
                       </a>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
                         {comp.products?.length || 0} {productPlural(comp.products?.length || 0)}{comp.competitor_type ? ` • ${comp.competitor_type}` : ''}

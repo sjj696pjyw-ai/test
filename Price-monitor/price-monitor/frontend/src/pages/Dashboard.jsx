@@ -346,7 +346,7 @@ export default function Dashboard() {
               <div className="relative" ref={regionDropdownRef}>
                 <button
                   onClick={() => setShowRegionDropdown(!showRegionDropdown)}
-                  className="input-field py-1.5 text-sm flex items-center justify-between overflow-hidden"
+                  className="input-field py-2 text-sm flex items-center justify-between overflow-hidden"
                   style={{ width: '250px', minWidth: '250px' }}
                 >
                   <span className="truncate">{getTruncatedRegionText(getRegionFilterText())}</span>
