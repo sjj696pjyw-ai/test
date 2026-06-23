@@ -2,12 +2,10 @@ import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../utils/api'
 import { ArrowLeft, Loader2, Check, AlertCircle, Eye, ExternalLink } from 'lucide-react'
-import { useToast } from '../context/ToastContext'
 
 export default function SelectorsSetup() {
   const { id, competitorId } = useParams()
   const navigate = useNavigate()
-  const { error: showError } = useToast()
 
   const [url, setUrl] = useState('')
   const [nameSelector, setNameSelector] = useState('')
@@ -25,7 +23,7 @@ export default function SelectorsSetup() {
         const response = await api.get(`/analysis/competitor/${competitorId}`)
         const comp = response.data.competitor
         setCompetitor(comp)
-        // Подставляем текущий сайт в поле ссылки — его можно изменить на новый
+
         if (comp.domain) setUrl(comp.domain)
         if (comp.title_selector) setNameSelector(comp.title_selector)
         if (comp.price_selector) setPriceSelector(comp.price_selector)
@@ -39,7 +37,7 @@ export default function SelectorsSetup() {
     if (competitorId) {
       fetchCompetitor()
     }
-  }, [competitorId, api])
+  }, [competitorId])
 
   const handleVerify = async () => {
     if (!url || !nameSelector || !priceSelector) {
@@ -55,7 +53,7 @@ export default function SelectorsSetup() {
       const response = await api.post(`/analysis/competitor/${competitorId}/verify-selectors`, {
         url: url.startsWith('http') ? url : `https://${url}`,
         title_selector: nameSelector,
-        price_selector: priceSelector
+        price_selector: priceSelector,
       })
       setVerificationResult(response.data)
     } catch (err) {
@@ -77,7 +75,7 @@ export default function SelectorsSetup() {
       await api.post(`/analysis/competitor/${competitorId}/parse`, {
         url: url.startsWith('http') ? url : `https://${url}`,
         title_selector: nameSelector,
-        price_selector: priceSelector
+        price_selector: priceSelector,
       })
       navigate(`/analysis/${id}`)
     } catch (err) {
@@ -153,7 +151,7 @@ export default function SelectorsSetup() {
               )}
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              Вставьте URL страницы с товарами (для быстрого перехода используйте кнопку "Открыть")
+              Вставьте URL страницы с товарами (для быстрого перехода используйте кнопку «Открыть»)
             </p>
           </div>
 
@@ -170,7 +168,9 @@ export default function SelectorsSetup() {
                 placeholder=".product-name, #item-title, h2"
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Примеры: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">.product-title</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">#item-name</code>
+                Примеры:{' '}
+                <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">.product-title</code>,{' '}
+                <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">#item-name</code>
               </p>
             </div>
 
@@ -186,15 +186,18 @@ export default function SelectorsSetup() {
                 placeholder=".price, #product-price, span.price"
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Примеры: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">.price</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">[itemprop="price"]</code>
+                Примеры: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">.price</code>,{' '}
+                <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">
+                  [itemprop=&quot;price&quot;]
+                </code>
               </p>
             </div>
           </div>
 
-
-
           <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-            <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">Как найти селектор?</h4>
+            <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">
+              Как найти селектор?
+            </h4>
             <ol className="text-sm text-blue-800 dark:text-blue-200 space-y-1 list-decimal list-inside">
               <li>Откройте сайт конкурента в браузере</li>
               <li>Нажмите F12 или правой кнопкой мыши → Исследовать элемент</li>
@@ -222,18 +225,26 @@ export default function SelectorsSetup() {
           </button>
 
           {verificationResult && (
-            <div className={`border rounded-lg p-6 ${verificationResult.valid
-              ? 'border-green-300 bg-green-50 dark:border-green-800 dark:bg-green-900/30'
-              : 'border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-900/30'
-              }`}>
+            <div
+              className={`border rounded-lg p-6 ${
+                verificationResult.valid
+                  ? 'border-green-300 bg-green-50 dark:border-green-800 dark:bg-green-900/30'
+                  : 'border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-900/30'
+              }`}
+            >
               <div className="flex items-center space-x-2 mb-4">
                 {verificationResult.valid ? (
                   <Check className="h-6 w-6 text-green-600 dark:text-green-400" />
                 ) : (
                   <AlertCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
                 )}
-                <h3 className={`font-semibold ${verificationResult.valid ? 'text-green-900 dark:text-green-100' : 'text-red-900 dark:text-red-100'
-                  }`}>
+                <h3
+                  className={`font-semibold ${
+                    verificationResult.valid
+                      ? 'text-green-900 dark:text-green-100'
+                      : 'text-red-900 dark:text-red-100'
+                  }`}
+                >
                   {verificationResult.valid ? 'Селекторы найдены!' : 'Селекторы не найдены'}
                 </h3>
               </div>
@@ -241,34 +252,53 @@ export default function SelectorsSetup() {
               {verificationResult.mismatch_warning && (
                 <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg flex items-start space-x-2">
                   <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
-                  <p className="text-sm text-yellow-700 dark:text-yellow-300">{verificationResult.mismatch_message}</p>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                    {verificationResult.mismatch_message}
+                  </p>
                 </div>
               )}
 
               {verificationResult.product_count !== undefined && (
                 <div className="mb-4">
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Будет собрано товаров:</p>
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{verificationResult.product_count}</p>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Будет собрано товаров:
+                  </p>
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">
+                    {verificationResult.product_count}
+                  </p>
                 </div>
               )}
 
               <div className="grid md:grid-cols-2 gap-4 mb-4">
                 <div>
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Совпадений названий:</p>
-                  <p className="text-2xl font-bold text-gray-500 dark:text-gray-400">{verificationResult.name_count}</p>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Совпадений названий:
+                  </p>
+                  <p className="text-2xl font-bold text-gray-500 dark:text-gray-400">
+                    {verificationResult.name_count}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Совпадений цен:</p>
-                  <p className="text-2xl font-bold text-gray-500 dark:text-gray-400">{verificationResult.price_count}</p>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Совпадений цен:
+                  </p>
+                  <p className="text-2xl font-bold text-gray-500 dark:text-gray-400">
+                    {verificationResult.price_count}
+                  </p>
                 </div>
               </div>
 
               {verificationResult.sample_names?.length > 0 && (
                 <div className="mb-4">
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Примеры названий:</p>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Примеры названий:
+                  </p>
                   <div className="space-y-1">
                     {verificationResult.sample_names.slice(0, 3).map((name, i) => (
-                      <p key={i} className="text-sm text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 px-3 py-2 rounded border dark:border-gray-700">
+                      <p
+                        key={i}
+                        className="text-sm text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 px-3 py-2 rounded border dark:border-gray-700"
+                      >
                         {name.length > 60 ? name.substring(0, 60) + '...' : name}
                       </p>
                     ))}
@@ -278,10 +308,15 @@ export default function SelectorsSetup() {
 
               {verificationResult.sample_prices?.length > 0 && (
                 <div>
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Примеры цен:</p>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Примеры цен:
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {verificationResult.sample_prices.slice(0, 5).map((price, i) => (
-                      <span key={i} className="text-sm bg-white dark:bg-gray-800 px-3 py-2 rounded border dark:border-gray-700">
+                      <span
+                        key={i}
+                        className="text-sm bg-white dark:bg-gray-800 px-3 py-2 rounded border dark:border-gray-700"
+                      >
                         {price}
                       </span>
                     ))}
@@ -303,7 +338,6 @@ export default function SelectorsSetup() {
               </button>
             </div>
           )}
-
         </div>
       </div>
     </div>

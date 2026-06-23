@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { User, Mail, Calendar, AlertCircle, Lock } from 'lucide-react'
@@ -41,7 +41,7 @@ export default function Profile() {
     try {
       await api.post('/auth/change-password', {
         old_password: oldPassword,
-        new_password: newPassword
+        new_password: newPassword,
       })
       success('Пароль успешно изменён')
       setOldPassword('')
@@ -65,7 +65,9 @@ export default function Profile() {
             <User className="h-8 w-8 text-primary-600 dark:text-primary-400" />
           </div>
           <div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Аккаунт пользователя</h2>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+              Аккаунт пользователя
+            </h2>
             <p className="text-gray-500 dark:text-gray-400">Управление профилем</p>
           </div>
         </div>
@@ -153,9 +155,15 @@ export default function Profile() {
                   className="btn-primary text-sm flex items-center space-x-2"
                 >
                   {loading ? (
-                    <><span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></span><span>Сохранение...</span></>
+                    <>
+                      <span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></span>
+                      <span>Сохранение...</span>
+                    </>
                   ) : (
-                    <><Lock className="h-4 w-4" /><span>Обновить пароль</span></>
+                    <>
+                      <Lock className="h-4 w-4" />
+                      <span>Обновить пароль</span>
+                    </>
                   )}
                 </button>
               </div>
@@ -175,7 +183,9 @@ export default function Profile() {
                     <div className="flex items-start space-x-3">
                       <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5" />
                       <div>
-                        <p className="text-sm text-red-700 dark:text-red-300 font-medium">Вы уверены?</p>
+                        <p className="text-sm text-red-700 dark:text-red-300 font-medium">
+                          Вы уверены?
+                        </p>
                         <p className="text-sm text-red-600 dark:text-red-400 mt-1">
                           Это действие завершит текущую сессию.
                         </p>

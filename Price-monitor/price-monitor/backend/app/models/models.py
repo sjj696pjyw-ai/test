@@ -1,9 +1,9 @@
-from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
-from werkzeug.security import generate_password_hash, check_password_hash
+
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import check_password_hash, generate_password_hash
 
 db = SQLAlchemy()
-
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -27,7 +27,6 @@ class User(db.Model):
             'email': self.email,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
-
 
 class Analysis(db.Model):
     __tablename__ = 'analyses'
@@ -55,7 +54,6 @@ class Analysis(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'competitors_count': self.competitors.filter_by(is_user_site=False).count()
         }
-
 
 class Competitor(db.Model):
     __tablename__ = 'competitors'
@@ -88,7 +86,6 @@ class Competitor(db.Model):
             'update_error_message': self.update_error_message
         }
 
-
 class Product(db.Model):
     __tablename__ = 'products'
 
@@ -98,7 +95,7 @@ class Product(db.Model):
     price = db.Column(db.Float)
     currency = db.Column(db.String(10), default='RUB')
     external_id = db.Column(db.String(255))
-    url = db.Column(db.String(1000))  # Product URL for matching
+    url = db.Column(db.String(1000))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -110,7 +107,6 @@ class Product(db.Model):
             'external_id': self.external_id,
             'url': self.url
         }
-
 
 class PriceHistory(db.Model):
     __tablename__ = 'price_history'
@@ -132,7 +128,6 @@ class PriceHistory(db.Model):
             'recorded_at': self.recorded_at.isoformat() if self.recorded_at else None
         }
 
-
 class ProductLink(db.Model):
     __tablename__ = 'product_links'
 
@@ -151,8 +146,8 @@ class ProductLink(db.Model):
             'user_product': self.user_product.to_dict() if self.user_product else None,
             'competitor_product': self.competitor_product.to_dict() if self.competitor_product else None,
             'price_difference': (
-                (self.user_product.price - self.competitor_product.price) 
-                if self.user_product and self.competitor_product and self.user_product.price 
+                (self.user_product.price - self.competitor_product.price)
+                if self.user_product and self.competitor_product and self.user_product.price
                 else None
             )
         }

@@ -9,10 +9,11 @@ export const exportToExcel = (data, filename) => {
     const worksheet = XLSX.utils.json_to_sheet(data)
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Report')
-    
-    // For browser environment
+
     const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
-    const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const blob = new Blob([excelBuffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)
     link.download = `${filename}.xlsx`
@@ -22,7 +23,7 @@ export const exportToExcel = (data, filename) => {
     console.error('Excel export error:', error)
   }
 }
- 
+
 export const exportToCSV = (data, filename) => {
   if (!data || data.length === 0) {
     console.error('No data to export')
@@ -41,12 +42,12 @@ export const exportToCSV = (data, filename) => {
     console.error('CSV export error:', error)
   }
 }
- 
+
 export const formatPrice = (price) => {
   if (price == null) return 'N/A'
   return new Intl.NumberFormat('ru-RU', {
     style: 'currency',
-    currency: 'RUB'
+    currency: 'RUB',
   }).format(price)
 }
 
@@ -56,6 +57,6 @@ export const formatDate = (dateString) => {
   return new Intl.DateTimeFormat('ru-RU', {
     year: 'numeric',
     month: 'long',
-    day: 'numeric'
+    day: 'numeric',
   }).format(date)
 }

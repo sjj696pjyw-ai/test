@@ -1,4 +1,38 @@
-```
-# Project-specific
-"Price-monitor-develop
-```
+# ---- Python (backend) ----
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# ---- Node / frontend ----
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ---- Окружение и секреты ----
+.env
+.env.*
+*.env
+
+# ---- База данных / runtime ----
+instance/
+*.db
+*.sqlite
+*.sqlite3
+
+# ---- IDE / ОС ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# ---- Прочее ----
+*.log

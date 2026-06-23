@@ -31,7 +31,7 @@ export const REGIONS = [
   { value: '49', label: 'Барнаул' },
 ]
 
-export const REGION_MAP = Object.fromEntries(REGIONS.map(r => [r.value, r.label]))
+export const REGION_MAP = Object.fromEntries(REGIONS.map((r) => [r.value, r.label]))
 
 export function getRegionName(code) {
   return REGION_MAP[code] || code

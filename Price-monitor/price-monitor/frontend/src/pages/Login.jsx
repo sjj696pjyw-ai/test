@@ -5,57 +5,56 @@ import { useToast } from '../context/ToastContext'
 import { Mail, Lock, AlertCircle } from 'lucide-react'
 
 export default function Login() {
-const [email, setEmail] = useState('')
-const [password, setPassword] = useState('')
-const [errors, setErrors] = useState({})
-const [loading, setLoading] = useState(false)
-const [loggedIn, setLoggedIn] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [errors, setErrors] = useState({})
+  const [loading, setLoading] = useState(false)
+  const [loggedIn, setLoggedIn] = useState(false)
 
-const { user, login } = useAuth()
-const { success, error: showError } = useToast()
-const navigate = useNavigate()
+  const { user, login } = useAuth()
+  const { success, error: showError } = useToast()
+  const navigate = useNavigate()
 
-useEffect(() => {
-  if (user && loggedIn) {
-    navigate('/dashboard')
-  }
-}, [user, loggedIn, navigate])
+  useEffect(() => {
+    if (user && loggedIn) {
+      navigate('/dashboard')
+    }
+  }, [user, loggedIn, navigate])
 
   const validate = () => {
     const newErrors = {}
-    
+
     if (!email) {
       newErrors.email = 'Email обязателен'
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       newErrors.email = 'Некорректный формат email'
     }
-    
+
     if (!password) {
       newErrors.password = 'Пароль обязателен'
     }
-    
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
-const handleSubmit = async (e) => {
-  e.preventDefault()
-  
-  if (!validate()) return
-  
-  setLoading(true)
+  const handleSubmit = async (e) => {
+    e.preventDefault()
 
-  try {
-    await login(email, password)
-    console.log('Token in localStorage:', localStorage.getItem('access_token')?.substring(0, 20) + '...')
-    success('Успешный вход в систему')
-    setLoggedIn(true)
-  } catch (err) {
-    showError(err.response?.data?.error || 'Произошла ошибка при входе')
-  } finally {
-    setLoading(false)
+    if (!validate()) return
+
+    setLoading(true)
+
+    try {
+      await login(email, password)
+      success('Успешный вход в систему')
+      setLoggedIn(true)
+    } catch (err) {
+      showError(err.response?.data?.error || 'Произошла ошибка при входе')
+    } finally {
+      setLoading(false)
+    }
   }
-}
 
   return (
     <div className="min-h-[80vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -63,13 +62,22 @@ const handleSubmit = async (e) => {
         <div className="text-center">
           <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Вход в систему</h2>
           <p className="mt-2 text-gray-600 dark:text-gray-400">
-            Или <Link to="/register" className="text-primary-600 hover:text-primary-500 dark:text-primary-400 font-medium">зарегистрируйтесь</Link>
+            Или{' '}
+            <Link
+              to="/register"
+              className="text-primary-600 hover:text-primary-500 dark:text-primary-400 font-medium"
+            >
+              зарегистрируйтесь
+            </Link>
           </p>
         </div>
 
         <form className="card space-y-6" onSubmit={handleSubmit}>
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label
+              htmlFor="email"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+            >
               Email
             </label>
             <div className="flex items-center border border-gray-300 rounded-lg px-3 bg-white dark:bg-gray-800 dark:border-gray-600 focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-transparent transition-all">
@@ -95,7 +103,10 @@ const handleSubmit = async (e) => {
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+            >
               Пароль
             </label>
             <div className="flex items-center border border-gray-300 rounded-lg px-3 bg-white dark:bg-gray-800 dark:border-gray-600 focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-transparent transition-all">
@@ -122,7 +133,10 @@ const handleSubmit = async (e) => {
 
           <div className="flex items-center justify-between">
             <div className="text-sm">
-              <Link to="/forgot-password" className="text-primary-600 hover:text-primary-500 dark:text-primary-400">
+              <Link
+                to="/forgot-password"
+                className="text-primary-600 hover:text-primary-500 dark:text-primary-400"
+              >
                 Забыли пароль?
               </Link>
             </div>
@@ -138,7 +152,9 @@ const handleSubmit = async (e) => {
                 <span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></span>
                 Вход...
               </span>
-            ) : 'Войти'}
+            ) : (
+              'Войти'
+            )}
           </button>
         </form>
       </div>

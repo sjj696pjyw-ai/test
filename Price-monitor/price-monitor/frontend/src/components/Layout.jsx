@@ -33,9 +33,19 @@ export default function Layout({ children }) {
             </Link>
 
             <nav className="hidden md:flex items-center gap-6">
-              <Link to="/" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">Главная</Link>
+              <Link
+                to="/"
+                className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+              >
+                Главная
+              </Link>
               {user && (
-                <Link to="/dashboard" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">Мои анализы</Link>
+                <Link
+                  to="/dashboard"
+                  className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+                >
+                  Мои анализы
+                </Link>
               )}
               <button
                 onClick={toggleTheme}
@@ -46,19 +56,29 @@ export default function Layout({ children }) {
               </button>
               {user ? (
                 <>
-                  <Link to="/profile" className="flex items-center space-x-1 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">
+                  <Link
+                    to="/profile"
+                    className="flex items-center space-x-1 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+                  >
                     <User className="h-4 w-4" />
                     <span className="hidden lg:inline">Профиль</span>
                   </Link>
-                  <button onClick={handleLogout} className="btn-secondary flex items-center space-x-1 text-sm">
+                  <button
+                    onClick={handleLogout}
+                    className="btn-secondary flex items-center space-x-1 text-sm"
+                  >
                     <LogOut className="h-4 w-4" />
                     <span>Выйти</span>
                   </button>
                 </>
               ) : (
                 <>
-                  <Link to="/login" className="btn-secondary">Войти</Link>
-                  <Link to="/register" className="btn-primary">Регистрация</Link>
+                  <Link to="/login" className="btn-secondary">
+                    Войти
+                  </Link>
+                  <Link to="/register" className="btn-primary">
+                    Регистрация
+                  </Link>
                 </>
               )}
             </nav>
@@ -70,7 +90,7 @@ export default function Layout({ children }) {
               >
                 {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </button>
-              <button 
+              <button
                 className="p-2 text-gray-600 dark:text-gray-300"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               >
@@ -83,17 +103,29 @@ export default function Layout({ children }) {
         {mobileMenuOpen && (
           <div className="md:hidden bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
             <div className="px-4 py-4 space-y-3">
-              <Link to="/" className="block text-gray-600 dark:text-gray-300">Главная</Link>
+              <Link to="/" className="block text-gray-600 dark:text-gray-300">
+                Главная
+              </Link>
               {user ? (
                 <>
-                  <Link to="/dashboard" className="block text-gray-600 dark:text-gray-300">Мои анализы</Link>
-                  <Link to="/profile" className="block text-gray-600 dark:text-gray-300">Профиль</Link>
-                  <button onClick={handleLogout} className="btn-secondary w-full">Выйти</button>
+                  <Link to="/dashboard" className="block text-gray-600 dark:text-gray-300">
+                    Мои анализы
+                  </Link>
+                  <Link to="/profile" className="block text-gray-600 dark:text-gray-300">
+                    Профиль
+                  </Link>
+                  <button onClick={handleLogout} className="btn-secondary w-full">
+                    Выйти
+                  </button>
                 </>
               ) : (
                 <div className="space-y-2">
-                  <Link to="/login" className="btn-secondary w-full block text-center">Войти</Link>
-                  <Link to="/register" className="btn-primary w-full block text-center">Регистрация</Link>
+                  <Link to="/login" className="btn-secondary w-full block text-center">
+                    Войти
+                  </Link>
+                  <Link to="/register" className="btn-primary w-full block text-center">
+                    Регистрация
+                  </Link>
                 </div>
               )}
             </div>
@@ -101,11 +133,7 @@ export default function Layout({ children }) {
         )}
       </header>
 
-      <main className="flex-1">
-        {children}
-      </main>
-
-
+      <main className="flex-1">{children}</main>
     </div>
   )
 }

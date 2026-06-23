@@ -2,18 +2,14 @@ import axios from 'axios'
 import { fixEncodingRecursive } from './encoding'
 
 const api = axios.create({
-  // Локально (npm run dev) переменная не задана → '/api' проксируется на бэкенд
-  // через vite.config.js. В проде задаётся VITE_API_URL при сборке.
   baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: {
-    'Content-Type': 'application/json'
-  }
+    'Content-Type': 'application/json',
+  },
 })
 
-// Интерцептор для автоматического исправления кодировки в ответах
 api.interceptors.response.use(
   (response) => {
-    // Применяем исправление кодировки ко всем данным ответа
     if (response.data) {
       response.data = fixEncodingRecursive(response.data)
     }

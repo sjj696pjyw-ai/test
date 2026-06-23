@@ -55,7 +55,9 @@ function NotFound() {
       <div className="text-center">
         <h1 className="text-6xl font-bold text-gray-900 dark:text-white">404</h1>
         <p className="text-xl text-gray-600 dark:text-gray-400 mt-2">Страница не найдена</p>
-        <a href="/" className="btn-primary mt-6 inline-block">На главную</a>
+        <a href="/" className="btn-primary mt-6 inline-block">
+          На главную
+        </a>
       </div>
     </div>
   )
@@ -70,13 +72,62 @@ export default function App() {
             <Layout>
               <Routes>
                 <Route path="/" element={<Home />} />
-                <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-                <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
-                <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
-                <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-                <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-                <Route path="/analysis/:id" element={<ProtectedRoute><AnalysisDetail /></ProtectedRoute>} />
-                <Route path="/analysis/:id/competitor/:competitorId/selectors" element={<ProtectedRoute><SelectorsSetup /></ProtectedRoute>} />
+                <Route
+                  path="/login"
+                  element={
+                    <PublicRoute>
+                      <Login />
+                    </PublicRoute>
+                  }
+                />
+                <Route
+                  path="/register"
+                  element={
+                    <PublicRoute>
+                      <Register />
+                    </PublicRoute>
+                  }
+                />
+                <Route
+                  path="/forgot-password"
+                  element={
+                    <PublicRoute>
+                      <ForgotPassword />
+                    </PublicRoute>
+                  }
+                />
+                <Route
+                  path="/dashboard"
+                  element={
+                    <ProtectedRoute>
+                      <Dashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/profile"
+                  element={
+                    <ProtectedRoute>
+                      <Profile />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/analysis/:id"
+                  element={
+                    <ProtectedRoute>
+                      <AnalysisDetail />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/analysis/:id/competitor/:competitorId/selectors"
+                  element={
+                    <ProtectedRoute>
+                      <SelectorsSetup />
+                    </ProtectedRoute>
+                  }
+                />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Layout>

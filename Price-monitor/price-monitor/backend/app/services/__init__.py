@@ -1,9 +1,9 @@
 from .analysis_service import (
     AnalysisService,
     CompetitorService,
-    ProductService,
     ProductLinkService,
-    SiteParsingService
+    ProductService,
+    SiteParsingService,
 )
 from .price_update_service import PriceUpdateService
 

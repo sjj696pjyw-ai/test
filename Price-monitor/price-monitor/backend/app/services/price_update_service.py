@@ -1,28 +1,32 @@
-from ..models import db, Competitor, Product, PriceHistory, ProductLink, Analysis
-from ..utils.site_parser import SiteParser
+import logging
 from datetime import datetime, timedelta
 
+from ..models import Analysis, Competitor, PriceHistory, Product, ProductLink, db
+from ..utils.site_parser import SiteParser
+from .product_upsert import upsert_competitor_products
+
+logger = logging.getLogger(__name__)
 
 class PriceUpdateService:
-    """Service for handling price updates from competitor sites"""
-    
-    MIN_UPDATE_INTERVAL_MINUTES = 3  # Minimum time between updates
-    
+    """Класс обновления цен товаров для сайтов"""
+
+    MIN_UPDATE_INTERVAL_MINUTES = 3
+
     @staticmethod
     def can_update_competitor(competitor):
-        """Check if competitor can be updated (rate limiting)"""
+        """Проверяем - можем ли обновить сейчас (Проверка лимита времени)"""
         if not competitor.last_price_update:
             return True, None
-        
+
         now = datetime.utcnow()
         time_since_update = now - competitor.last_price_update
         minutes_remaining = PriceUpdateService.MIN_UPDATE_INTERVAL_MINUTES - (time_since_update.total_seconds() / 60)
-        
+
         if minutes_remaining > 0:
-            return False, f"Обновление доступно через {int(minutes_remaining)} мин."
-        
+            return False, f"Слишком частые запросы. Обновление доступно через {int(minutes_remaining)} мин."
+
         return True, None
-    
+
     @staticmethod
     def _collect_products_parallel(competitors, respect_rate_limit=True):
         """
@@ -31,11 +35,9 @@ class PriceUpdateService:
         Возвращает {competitor_id: products|None}. Запись в БД делается отдельно,
         последовательно (SQLite — один писатель).
         """
-        from concurrent.futures import ThreadPoolExecutor
         import os as _os
+        from concurrent.futures import ThreadPoolExecutor
 
-        # Готовим «плоские» задания заранее (в основном потоке), чтобы в потоках
-        # не обращаться к ORM-объектам.
         targets = []
         for c in competitors:
             if not c.title_selector or not c.price_selector:
@@ -55,17 +57,14 @@ class PriceUpdateService:
         def scrape(task):
             cid, url, title, price = task
             try:
-                print(f"[СБОР] старт: {url}")
+                logger.info(f"[СБОР] старт: {url}")
                 prods = SiteParser().parse_products_paginated(url, title, price)
-                print(f"[СБОР] готово: {url} — товаров {len(prods) if prods else 0}")
+                logger.info(f"[СБОР] готово: {url} — товаров {len(prods) if prods else 0}")
                 return cid, prods
             except Exception as e:
-                print(f"[СБОР] ошибка: {url} — {e}")
+                logger.error(f"[СБОР] ошибка: {url} — {e}")
                 return cid, None
 
-        # С Selenium каждый воркер может поднять браузер — ограничиваем, чтобы не
-        # съесть память/CPU; на requests-сайтах потоки лёгкие. Лимит настраивается
-        # переменной COLLECT_MAX_WORKERS (≈ числу ядер CPU).
         use_selenium = _os.environ.get('PARSER_USE_SELENIUM', '1') != '0'
         default_cap = 3 if use_selenium else 8
         try:
@@ -83,43 +82,38 @@ class PriceUpdateService:
     def update_competitor_prices(competitor_id, prefetched_html=None, prefetched_products=None,
                                  respect_rate_limit=True):
         """
-        Update prices for a single competitor.
+        Метод обновления цены для одного сайта.
         prefetched_html — заранее загруженный HTML первой страницы.
         prefetched_products — уже собранные товары (параллельный сбор): если
             переданы, скрейпинг пропускается, идёт только запись в БД.
         respect_rate_limit — учитывать лимит «раз в 3 минуты». Для системного
             (ночного) обновления передаём False.
-        Returns dict with status, updated_count, errors, etc.
+        Возвращает dict с полями status, updated_count, errors, etc.
         """
         competitor = Competitor.query.get(competitor_id)
         if not competitor:
-            print(f"[DEBUG] Competitor {competitor_id} not found in database")
+            logger.debug(f"[DEBUG] Competitor {competitor_id} not found in database")
             return {
                 'success': False,
                 'error': 'Конкурент не найден',
                 'status': 'error'
             }
-        
-        # Check rate limit (системное ночное обновление его игнорирует)
+
         if respect_rate_limit:
             can_update, error_msg = PriceUpdateService.can_update_competitor(competitor)
             if not can_update:
-                print(f"[DEBUG] Competitor {competitor_id} is rate limited: {error_msg}")
+                logger.debug(f"[DEBUG] Competitor {competitor_id} is rate limited: {error_msg}")
                 return {
                     'success': False,
                     'error': error_msg,
                     'status': 'rate_limited'
                 }
-        
-        # Check if selectors are configured (skip for user site without selectors - use current price)
+
         if not competitor.title_selector or not competitor.price_selector:
-            # Свой сайт без селекторов: фиксируем текущие цены в историю — но
-            # ТОЛЬКО если товары вообще есть. Иначе обновлять нечего: не трогаем
-            # last_price_update (иначе пишется «Цены актуальны на…» на пустом).
             if competitor.is_user_site:
                 products = Product.query.filter_by(competitor_id=competitor_id).all()
                 if not products:
-                    print(f"[DEBUG] Competitor {competitor_id} (свой сайт): нет товаров и селекторов — пропуск")
+                    logger.debug(f"[DEBUG] Competitor {competitor_id} (свой сайт): нет товаров и селекторов — пропуск")
                     return {
                         'success': False,
                         'status': 'no_products',
@@ -128,7 +122,6 @@ class PriceUpdateService:
                         'is_user_site': True
                     }
                 for product in products:
-                    # Record current price to history
                     price_history = PriceHistory(
                         product_id=product.id,
                         price=product.price,
@@ -149,7 +142,7 @@ class PriceUpdateService:
                     'is_user_site': True
                 }
 
-            print(f"[DEBUG] Competitor {competitor_id} has no selectors configured")
+            logger.debug(f"[DEBUG] Competitor {competitor_id} has no selectors configured")
             return {
                 'success': False,
                 'error': 'Селекторы не настроены',
@@ -157,24 +150,20 @@ class PriceUpdateService:
             }
 
         if prefetched_products is not None:
-            # Товары уже собраны заранее (параллельный сбор) — скрейпинг пропускаем
             products_data = prefetched_products
         else:
-            # Build URL from domain
             url = competitor.domain
             if not url.startswith(('http://', 'https://')):
                 url = f'https://{url}'
 
-            print(f"[DEBUG] Updating prices for competitor {competitor_id}, domain: {competitor.domain}, url: {url}")
-            print(f"[DEBUG] Selectors - title: {competitor.title_selector}, price: {competitor.price_selector}")
+            logger.debug(f"[DEBUG] Updating prices for competitor {competitor_id}, domain: {competitor.domain}, url: {url}")
+            logger.debug(f"[DEBUG] Selectors - title: {competitor.title_selector}, price: {competitor.price_selector}")
 
-            # Parse the site (используем заранее загруженный HTML первой страницы,
-            # если он есть; проверка доступности — по первой странице).
             parser = SiteParser()
             first_html = prefetched_html if prefetched_html is not None else parser.get_page(url, scroll_selector=competitor.title_selector, scroll=False)
 
             if not first_html:
-                print(f"[DEBUG] Failed to get HTML from {url}")
+                logger.debug(f"[DEBUG] Failed to get HTML from {url}")
                 competitor.update_status = 'error'
                 competitor.update_error_message = 'Сайт не отвечает или недоступен'
                 db.session.commit()
@@ -194,13 +183,13 @@ class PriceUpdateService:
                 first_html=first_html
             )
 
-        print(f"[DEBUG] Parsed {len(products_data)} products")
-        
+        logger.debug(f"[DEBUG] Parsed {len(products_data)} products")
+
         if not products_data:
             competitor.update_status = 'partial'
             competitor.update_error_message = 'Товары не найдены по селекторам'
             db.session.commit()
-            
+
             return {
                 'success': False,
                 'error': 'Товары не найдены',
@@ -208,73 +197,23 @@ class PriceUpdateService:
                 'competitor_id': competitor_id,
                 'competitor_domain': competitor.domain
             }
-        
-        # Match and update existing products or create new ones
-        updated_count = 0
-        created_count = 0
-        not_found_count = 0
-        price_changes = []
-        
-        existing_products = {p.name.strip().lower(): p for p in Product.query.filter_by(competitor_id=competitor_id).all()}
-        
-        for prod_data in products_data:
-            product_name = prod_data['name'].strip()
-            product_name_key = product_name.lower()
-            
-            if product_name_key in existing_products:
-                # Update existing product
-                product = existing_products[product_name_key]
-                old_price = product.price
-                new_price = prod_data['price']
-                
-                # Record price history for linked user product (before updating competitor price)
-                # This ensures we capture the current state before any changes
-                PriceUpdateService._record_linked_user_product_price(product.id)
-                
-                if old_price != new_price:
-                    # Record price history for competitor product
-                    price_history = PriceHistory(
-                        product_id=product.id,
-                        price=old_price,
-                        currency=product.currency
-                    )
-                    db.session.add(price_history)
-                    
-                    # Update price
-                    product.price = new_price
-                    price_changes.append({
-                        'product_id': product.id,
-                        'product_name': product.name,
-                        'old_price': old_price,
-                        'new_price': new_price
-                    })
-                
-                updated_count += 1
-            else:
-                # Create new product
-                product = Product(
-                    competitor_id=competitor_id,
-                    name=product_name,
-                    price=prod_data['price'],
-                    currency=prod_data.get('currency', 'RUB')
-                )
-                db.session.add(product)
-                created_count += 1
-        
-        # Mark products that weren't found in the latest parse as potentially unavailable
-        found_names = {p['name'].strip().lower() for p in products_data}
-        for name, product in existing_products.items():
-            if name not in found_names:
-                not_found_count += 1
-                # We don't delete, just track that it wasn't found
-        
-        # Update competitor status
+
+        upsert_result = upsert_competitor_products(
+            competitor_id,
+            products_data,
+            on_existing=lambda product: PriceUpdateService._record_linked_user_product_price(product.id),
+        )
+        updated_count = upsert_result['updated_count']
+        created_count = upsert_result['created_count']
+        not_found_count = upsert_result['not_found_count']
+        price_changes = upsert_result['price_changes']
+
         competitor.last_price_update = datetime.utcnow()
         competitor.update_status = 'success' if not_found_count == 0 else 'partial'
         competitor.update_error_message = None if competitor.update_status == 'success' else f'{not_found_count} товаров не найдено'
-        
+
         db.session.commit()
-        
+
         return {
             'success': True,
             'status': competitor.update_status,
@@ -286,34 +225,32 @@ class PriceUpdateService:
             'price_changes': price_changes,
             'last_update': competitor.last_price_update.isoformat()
         }
-    
+
     @staticmethod
     def _record_linked_user_product_price(competitor_product_id):
         """
         Record price history for user product linked to this competitor product.
         Called when competitor's price changes.
         """
-        # Find all product links where this competitor product is linked
         product_links = ProductLink.query.filter_by(competitor_product_id=competitor_product_id).all()
-        
+
         for link in product_links:
             user_product = link.user_product
             if user_product:
-                # Record current user product price to history
                 price_history = PriceHistory(
                     product_id=user_product.id,
                     price=user_product.price,
                     currency=user_product.currency
                 )
                 db.session.add(price_history)
-    
+
     @staticmethod
     def update_analysis_prices(analysis_id, respect_rate_limit=True):
         """
-        Update prices for all competitors in an analysis.
+        Обновление всех цен в анализе.
         respect_rate_limit — для ручного обновления True (лимит раз в 3 мин),
             для системного (ночного) — False.
-        Returns dict with overall status and per-competitor results.
+        Возвращает dict с статусом и результатами.
         """
         competitors = Competitor.query.filter_by(analysis_id=analysis_id).all()
 
@@ -324,9 +261,6 @@ class PriceUpdateService:
                 'results': []
             }
 
-        # Если хотя бы один конкурент ещё под рейт-лимитом — не обновляем НИЧЕГО.
-        # Обновление доступно раз в 3 минуты, и сразу по всем (чтобы не падать в
-        # ошибку из-за одного сайта). Системное обновление этот лимит игнорирует.
         if respect_rate_limit:
             wait_minutes = []
             for c in competitors:
@@ -342,14 +276,12 @@ class PriceUpdateService:
                 return {
                     'success': False,
                     'status': 'rate_limited',
-                    'overall_status': 'rate_limited',   # фронт читает overall_status
+                    'overall_status': 'rate_limited',
                     'rate_limited_message': msg,
                     'error': msg,
                     'results': []
                 }
 
-        # ПАРАЛЛЕЛЬНО собираем товары всех конкурентов (только скрейпинг, без БД),
-        # а изменения в БД применяем последовательно (SQLite — один писатель).
         collected = PriceUpdateService._collect_products_parallel(competitors, respect_rate_limit=respect_rate_limit)
 
         results = []
@@ -357,14 +289,11 @@ class PriceUpdateService:
         partial_count = 0
         error_count = 0
         rate_limited_count = 0
-        skipped_count = 0  # конкуренты без настроенных селекторов — это не ошибка
+        skipped_count = 0
 
         for competitor in competitors:
-            # Сайт конкурента без настроенных селекторов — не пытаемся обновлять.
-            # (Свой сайт без селекторов остаётся: там просто фиксируется текущая
-            #  цена в историю — это делает update_competitor_prices.)
             if (not competitor.title_selector or not competitor.price_selector) and not competitor.is_user_site:
-                print(f"[ОБНОВЛЕНИЕ] {competitor.domain}: пропуск — селекторы не настроены")
+                logger.info(f"[ОБНОВЛЕНИЕ] {competitor.domain}: пропуск — селекторы не настроены")
                 results.append({
                     'success': False,
                     'status': 'no_selectors',
@@ -384,39 +313,36 @@ class PriceUpdateService:
             dom = result.get('competitor_domain', competitor.domain)
             if status == 'success':
                 success_count += 1
-                print(f"[ОБНОВЛЕНИЕ] {dom}: ✓ обновлено "
+                logger.info(f"[ОБНОВЛЕНИЕ] {dom}: ✓ обновлено "
                       f"(обновлено {result.get('updated_count', 0)}, создано {result.get('created_count', 0)})")
             elif status == 'partial':
                 partial_count += 1
-                print(f"[ОБНОВЛЕНИЕ] {dom}: ⚠ частично — {result.get('error') or 'часть товаров не найдена'}")
+                logger.warning(f"[ОБНОВЛЕНИЕ] {dom}: ⚠ частично — {result.get('error') or 'часть товаров не найдена'}")
             elif status == 'rate_limited':
                 rate_limited_count += 1
-                print(f"[ОБНОВЛЕНИЕ] {dom}: пропуск — рейт-лимит")
+                logger.info(f"[ОБНОВЛЕНИЕ] {dom}: пропуск — рейт-лимит")
             elif status == 'no_selectors':
                 skipped_count += 1
-                print(f"[ОБНОВЛЕНИЕ] {dom}: пропуск — селекторы не настроены")
+                logger.info(f"[ОБНОВЛЕНИЕ] {dom}: пропуск — селекторы не настроены")
             else:
                 error_count += 1
-                print(f"[ОБНОВЛЕНИЕ] {dom}: ✗ НЕ УДАЛОСЬ ({status}) — {result.get('error') or 'неизвестная ошибка'}")
+                logger.error(f"[ОБНОВЛЕНИЕ] {dom}: ✗ НЕ УДАЛОСЬ ({status}) — {result.get('error') or 'неизвестная ошибка'}")
 
-        # Сколько конкурентов реально обновилось
         updated = success_count + partial_count
 
-        # Determine overall status
         if updated == 0:
             if error_count > 0:
                 overall_status = 'error'
             elif rate_limited_count > 0:
                 overall_status = 'rate_limited'
             else:
-                overall_status = 'success'  # обновлять было нечего (только без селекторов)
+                overall_status = 'success'
         else:
             if error_count == 0 and rate_limited_count == 0:
                 overall_status = 'success' if partial_count == 0 else 'partial'
             else:
                 overall_status = 'partial'
 
-        # Сообщение про рейт-лимит (берём из первого ограниченного конкурента)
         rate_limited_message = next(
             (r.get('error') for r in results if r.get('status') == 'rate_limited' and r.get('error')),
             None
@@ -435,7 +361,7 @@ class PriceUpdateService:
             'skipped_count': skipped_count,
             'results': results
         }
-    
+
     @staticmethod
     def get_user_events(user_id, date_from=None, date_to=None):
         """
@@ -451,7 +377,6 @@ class PriceUpdateService:
                 if new_comp == user_price:
                     return 'Цена сравнялась с вашей.'
                 return 'Конкурент приближается к вашей цене.'
-            # increased
             if old_comp <= user_price < new_comp:
                 return 'Теперь вы выгоднее конкурента.'
             if new_comp > user_price:
@@ -470,8 +395,6 @@ class PriceUpdateService:
                 history = PriceHistory.query.filter_by(product_id=cp.id) \
                     .order_by(PriceHistory.recorded_at.asc()).all()
                 n = len(history)
-                # history[i].price — цена ДО изменения в момент history[i].recorded_at;
-                # значение ПОСЛЕ = следующая запись или текущая цена товара
                 for i in range(n):
                     old_price = history[i].price
                     new_price = history[i + 1].price if i + 1 < n else cp.price
@@ -506,51 +429,42 @@ class PriceUpdateService:
         total = len(analyses)
         ok = 0
         failed = 0
-        print(f"[SCHEDULER] Старт ночного обновления цен: анализов {total}")
+        logger.info(f"[SCHEDULER] Старт ночного обновления цен: анализов {total}")
         for a in analyses:
             try:
                 PriceUpdateService.update_analysis_prices(a.id, respect_rate_limit=False)
                 ok += 1
             except Exception as e:
                 failed += 1
-                print(f"[SCHEDULER] Анализ {a.id}: ошибка обновления — {e}")
-        print(f"[SCHEDULER] Готово: обработано {ok}/{total}, с ошибками {failed}")
+                logger.error(f"[SCHEDULER] Анализ {a.id}: ошибка обновления — {e}")
+        logger.info(f"[SCHEDULER] Готово: обработано {ok}/{total}, с ошибками {failed}")
         return {'total': total, 'ok': ok, 'failed': failed}
 
     @staticmethod
     def update_user_analyses_prices(user_id):
         """Обновляет цены по всем анализам пользователя, собирает статусы."""
-        # Статусы конкурентов, при которых цену обновить НЕ удалось
         FAILED = ('no_selectors', 'no_products', 'site_unavailable', 'error')
 
         analyses = Analysis.query.filter_by(user_id=user_id).all()
-        comp_results = []  # результаты по каждому конкуренту (всех анализов)
+        comp_results = []
         problem_ids = []
         for a in analyses:
             r = PriceUpdateService.update_analysis_prices(a.id)
             comp = r.get('results', [])
             comp_results.extend(comp)
-            # «Рабочие» конкуренты: реально обновились ИЛИ под рейт-лимитом
-            # (рейт-лимит = их недавно успешно обновляли, значит всё ок).
             working = sum(1 for cr in comp
                           if (cr.get('status') in ('success', 'partial') and not cr.get('is_user_site'))
                           or cr.get('status') == 'rate_limited')
             could_not = sum(1 for cr in comp if cr.get('status') in FAILED)
-            # Проблемный анализ — где нет ни одного рабочего конкурента, но есть
-            # причины (нет селекторов / сайт недоступен). Иначе не флагуем,
-            # чтобы при частых обновлениях не сыпать тостами из-за рейт-лимита.
             if working == 0 and could_not > 0:
                 problem_ids.append(a.id)
 
         any_problem = len(problem_ids) > 0
         any_rate_limited = any(cr.get('status') == 'rate_limited' for cr in comp_results)
 
-        # Глобально: вообще ничего не обновилось, и причина — отсутствие селекторов
         real_updates_total = sum(1 for cr in comp_results
                                  if cr.get('status') in ('success', 'partial') and not cr.get('is_user_site'))
         skipped_no_selectors = sum(1 for cr in comp_results if cr.get('status') == 'no_selectors')
-        # Не считаем «нужны селекторы», если что-то под рейт-лимитом (тогда покажем
-        # тост про рейт-лимит, а не про селекторы).
         need_selectors = real_updates_total == 0 and skipped_no_selectors > 0 and not any_rate_limited
 
         return {
@@ -562,80 +476,73 @@ class PriceUpdateService:
 
     @staticmethod
     def get_price_history(product_id, days=30):
-        """Get price history for a product"""
+        """Получает историю цены для продукта"""
         cutoff_date = datetime.utcnow() - timedelta(days=days)
         history = PriceHistory.query.filter(
             PriceHistory.product_id == product_id,
             PriceHistory.recorded_at >= cutoff_date
         ).order_by(PriceHistory.recorded_at.desc()).all()
-        
+
         return [h.to_dict() for h in history]
-    
+
     @staticmethod
     def get_analysis_price_dynamics(analysis_id, days=30):
         """
-        Get price dynamics for all linked products in an analysis.
-        Returns data suitable for chart rendering.
+        Получает динамику цен для связанных товаров в анализе.
+        Возвращает данные для отрисовки графика.
         """
         from ..models import ProductLink
-        
+
         product_links = ProductLink.query.filter_by(analysis_id=analysis_id).all()
-        
+
         dynamics = []
-        
+
         for link in product_links:
             user_product = link.user_product
             competitor_product = link.competitor_product
-            
+
             if not user_product or not competitor_product:
                 continue
-            
-            # Get price history for both products
+
             cutoff_date = datetime.utcnow() - timedelta(days=days)
-            
+
             user_history = PriceHistory.query.filter(
                 PriceHistory.product_id == user_product.id,
                 PriceHistory.recorded_at >= cutoff_date
             ).order_by(PriceHistory.recorded_at.asc()).all()
-            
+
             competitor_history = PriceHistory.query.filter(
                 PriceHistory.product_id == competitor_product.id,
                 PriceHistory.recorded_at >= cutoff_date
             ).order_by(PriceHistory.recorded_at.asc()).all()
-            
-            # Combine history points
+
             all_dates = set()
             for h in user_history + competitor_history:
                 date_key = h.recorded_at.date().isoformat()
                 all_dates.add(date_key)
-            
+
             all_dates = sorted(all_dates)
-            
-            # Add current prices as latest point
+
             current_date = datetime.utcnow().date().isoformat()
             if current_date not in all_dates:
                 all_dates.append(current_date)
-            
+
             series_data = {
                 'product_name': user_product.name,
-                'user_site': True,  # Mark as user's product (green)
-                'user_product_id': user_product.id,  # Add user product ID for filtering
+                'user_site': True,
+                'user_product_id': user_product.id,
                 'competitor_name': competitor_product.name,
                 'competitor_domain': competitor_product.competitor.domain,
                 'product_url': competitor_product.url,
                 'data_points': []
             }
-            
-            # Эффективная (действующая) цена на конец указанной даты.
-            # В истории хранится цена ДО изменения, поэтому действующая цена
-            # после изменения = следующая запись (или текущая цена товара).
-            # Это согласует график с лентой событий и реальной ценой.
+
             def effective(history, current_price, date_str):
                 n = len(history)
                 if n == 0:
                     return current_price
                 if date_str < history[0].recorded_at.date().isoformat():
-                    return history[0].price  # цена до первого изменения
+                    return history[0].price
                 val = history[0].price
                 for i in range(n):
                     if history[i].recorded_at.date().isoformat() <= date_str:
@@ -650,7 +557,7 @@ class PriceUpdateService:
                     'user_price': effective(user_history, user_product.price, date_str),
                     'competitor_price': effective(competitor_history, competitor_product.price, date_str)
                 })
-            
+
             dynamics.append(series_data)
-        
+
         return dynamics

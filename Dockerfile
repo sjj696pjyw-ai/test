@@ -23,28 +23,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY Price-monitor/price-monitor/backend/ ./
 
-# Собранный фронт кладём рядом, Flask его раздаёт
 COPY --from=frontend /fe/dist /app/frontend_dist
 
 ENV FLASK_APP=main.py
 ENV PYTHONUNBUFFERED=1
 ENV FRONTEND_DIST=/app/frontend_dist
-# Браузер для Selenium (парсинг JS-сайтов с прокруткой)
 ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
-# Отключить Selenium и работать только через requests можно так: PARSER_USE_SELENIUM=0
 ENV PARSER_USE_SELENIUM=1
-# Ночное автообновление цен (19:30 UTC по всем анализам). Замки — на томе /data.
 ENV ENABLE_SCHEDULER=1
 ENV SCHEDULER_LOCK_DIR=/data
-# Сколько браузеров поднимать параллельно при сборе (≈ числу ядер CPU). Для 2 ядер — 2.
 ENV COLLECT_MAX_WORKERS=2
 
 EXPOSE 5000
 
-# --timeout 180: Selenium-сбор (прокрутка/пагинация) может идти дольше дефолтных
-#   30 с — иначе gunicorn убивает воркера SIGKILL'ом посреди сессии и Chrome
-#   остаётся висеть (утечка памяти).
-# --graceful-timeout 30 + --max-requests: периодически перезапускаем воркеров,
-#   чтобы подчистить возможные осиротевшие процессы/память браузера.
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "3", "--timeout", "180", "--graceful-timeout", "30", "--max-requests", "200", "--max-requests-jitter", "40", "main:app"]

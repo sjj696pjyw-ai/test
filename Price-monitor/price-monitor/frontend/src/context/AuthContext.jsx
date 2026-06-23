@@ -30,11 +30,9 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const response = await api.post('/auth/login', { email, password })
-    console.log('Login response:', response.data)
     localStorage.setItem('access_token', response.data.access_token)
     localStorage.setItem('refresh_token', response.data.refresh_token)
     setUser(response.data.user)
-    console.log('User set in context:', response.data.user)
     return response.data
   }
 
