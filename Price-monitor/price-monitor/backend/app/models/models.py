@@ -69,6 +69,8 @@ class Competitor(db.Model):
     last_price_update = db.Column(db.DateTime)
     update_status = db.Column(db.String(50), default='pending')
     update_error_message = db.Column(db.Text)
+    # Кэш YML/price-фида: NULL — не проверяли, '' — фида нет, иначе URL фида.
+    feed_url = db.Column(db.String(1000))
 
     products = db.relationship('Product', backref='competitor', lazy='dynamic', cascade='all, delete-orphan')
 

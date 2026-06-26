@@ -40,7 +40,9 @@ class PriceUpdateService:
 
         targets = []
         for c in competitors:
-            if not c.title_selector or not c.price_selector:
+            has_selectors = bool(c.title_selector and c.price_selector)
+            # Свой сайт без селекторов не скрапим — он обновится снимком цен.
+            if c.is_user_site and not has_selectors:
                 continue
             if respect_rate_limit:
                 can_update, _ = PriceUpdateService.can_update_competitor(c)
@@ -49,16 +51,22 @@ class PriceUpdateService:
             url = c.domain
             if not url.startswith(('http://', 'https://')):
                 url = f'https://{url}'
-            targets.append((c.id, url, c.title_selector, c.price_selector))
+            targets.append((c.id, url, c.title_selector, c.price_selector, c.feed_url))
 
         if not targets:
             return {}
 
         def scrape(task):
-            cid, url, title, price = task
+            cid, url, title, price, feed_url = task
             try:
                 logger.info(f"[СБОР] старт: {url}")
-                prods = SiteParser().parse_products_paginated(url, title, price)
+                sp = SiteParser()
+                # по готовым селекторам — как раньше; иначе авто-извлечение
+                # (кэш фида читаем; запись кэша из потока не делаем)
+                if title and price:
+                    prods = sp.parse_products_paginated(url, title, price)
+                else:
+                    prods, _, _ = sp.collect_products(url, feed_url=feed_url)
                 logger.info(f"[СБОР] готово: {url} — товаров {len(prods) if prods else 0}")
                 return cid, prods
             except Exception as e:
@@ -109,85 +117,54 @@ class PriceUpdateService:
                     'status': 'rate_limited'
                 }
 
-        if not competitor.title_selector or not competitor.price_selector:
-            if competitor.is_user_site:
-                products = Product.query.filter_by(competitor_id=competitor_id).all()
-                if not products:
-                    logger.debug(f"[DEBUG] Competitor {competitor_id} (свой сайт): нет товаров и селекторов — пропуск")
-                    return {
-                        'success': False,
-                        'status': 'no_products',
-                        'competitor_id': competitor_id,
-                        'competitor_domain': competitor.domain,
-                        'is_user_site': True
-                    }
-                for product in products:
-                    price_history = PriceHistory(
-                        product_id=product.id,
-                        price=product.price,
-                        currency=product.currency
-                    )
-                    db.session.add(price_history)
-
-                competitor.last_price_update = datetime.utcnow()
-                competitor.update_status = 'success'
-                db.session.commit()
-
-                return {
-                    'success': True,
-                    'status': 'success',
-                    'competitor_id': competitor_id,
-                    'competitor_domain': competitor.domain,
-                    'updated_count': len(products),
-                    'is_user_site': True
-                }
-
-            logger.debug(f"[DEBUG] Competitor {competitor_id} has no selectors configured")
-            return {
-                'success': False,
-                'error': 'Селекторы не настроены',
-                'status': 'no_selectors'
-            }
-
+        # Источник товаров: заранее собранные (параллельный сбор) → по готовым
+        # селекторам → авто-извлечение, если селекторы не настроены.
         if prefetched_products is not None:
             products_data = prefetched_products
         else:
+            # Свой сайт без селекторов не скрапим — фиксируем текущие цены как
+            # историю (каталог там заведён владельцем, а не парсингом).
+            if competitor.is_user_site and not (competitor.title_selector and competitor.price_selector):
+                return PriceUpdateService._snapshot_user_site_prices(competitor)
+
             url = competitor.domain
             if not url.startswith(('http://', 'https://')):
                 url = f'https://{url}'
 
-            logger.debug(f"[DEBUG] Updating prices for competitor {competitor_id}, domain: {competitor.domain}, url: {url}")
-            logger.debug(f"[DEBUG] Selectors - title: {competitor.title_selector}, price: {competitor.price_selector}")
-
             parser = SiteParser()
-            first_html = prefetched_html if prefetched_html is not None else parser.get_page(url, scroll_selector=competitor.title_selector, scroll=False)
+            if competitor.title_selector and competitor.price_selector:
+                logger.debug(f"[DEBUG] Обновление {competitor_id} по селекторам: {url}")
+                first_html = prefetched_html if prefetched_html is not None else parser.get_page(
+                    url, scroll_selector=competitor.title_selector, scroll=False
+                )
+                if not first_html:
+                    logger.debug(f"[DEBUG] Не удалось получить HTML: {url}")
+                    competitor.update_status = 'error'
+                    competitor.update_error_message = 'Сайт не отвечает или недоступен'
+                    db.session.commit()
+                    return {
+                        'success': False,
+                        'error': 'Сайт не отвечает',
+                        'status': 'site_unavailable',
+                        'competitor_id': competitor_id,
+                        'competitor_domain': competitor.domain,
+                    }
+                products_data = parser.parse_products_paginated(
+                    url, competitor.title_selector, competitor.price_selector, first_html=first_html
+                )
+            else:
+                logger.debug(f"[DEBUG] Обновление {competitor_id} авто-извлечением: {url}")
+                products_data, _, feed_cache = parser.collect_products(
+                    url, feed_url=competitor.feed_url
+                )
+                if feed_cache is not None:
+                    competitor.feed_url = feed_cache
 
-            if not first_html:
-                logger.debug(f"[DEBUG] Failed to get HTML from {url}")
-                competitor.update_status = 'error'
-                competitor.update_error_message = 'Сайт не отвечает или недоступен'
-                db.session.commit()
-
-                return {
-                    'success': False,
-                    'error': 'Сайт не отвечает',
-                    'status': 'site_unavailable',
-                    'competitor_id': competitor_id,
-                    'competitor_domain': competitor.domain
-                }
-
-            products_data = parser.parse_products_paginated(
-                url,
-                competitor.title_selector,
-                competitor.price_selector,
-                first_html=first_html
-            )
-
-        logger.debug(f"[DEBUG] Parsed {len(products_data)} products")
+        logger.debug(f"[DEBUG] Собрано товаров: {len(products_data) if products_data else 0}")
 
         if not products_data:
             competitor.update_status = 'partial'
-            competitor.update_error_message = 'Товары не найдены по селекторам'
+            competitor.update_error_message = 'Товары не найдены'
             db.session.commit()
 
             return {
@@ -224,6 +201,42 @@ class PriceUpdateService:
             'not_found_count': not_found_count,
             'price_changes': price_changes,
             'last_update': competitor.last_price_update.isoformat()
+        }
+
+    @staticmethod
+    def _snapshot_user_site_prices(competitor):
+        """Свой сайт без скрапинга: фиксируем текущие цены товаров в истории.
+
+        Используется, когда у своего сайта нет ни селекторов, ни авто-собранных
+        данных — каталог заведён владельцем, и мы просто снимаем его цены в
+        историю на сегодняшнюю дату.
+        """
+        products = Product.query.filter_by(competitor_id=competitor.id).all()
+        if not products:
+            logger.debug(f"[DEBUG] Свой сайт {competitor.id}: нет товаров — пропуск")
+            return {
+                'success': False,
+                'status': 'no_products',
+                'competitor_id': competitor.id,
+                'competitor_domain': competitor.domain,
+                'is_user_site': True,
+            }
+        for product in products:
+            db.session.add(PriceHistory(
+                product_id=product.id,
+                price=product.price,
+                currency=product.currency,
+            ))
+        competitor.last_price_update = datetime.utcnow()
+        competitor.update_status = 'success'
+        db.session.commit()
+        return {
+            'success': True,
+            'status': 'success',
+            'competitor_id': competitor.id,
+            'competitor_domain': competitor.domain,
+            'updated_count': len(products),
+            'is_user_site': True,
         }
 
     @staticmethod
@@ -292,17 +305,6 @@ class PriceUpdateService:
         skipped_count = 0
 
         for competitor in competitors:
-            if (not competitor.title_selector or not competitor.price_selector) and not competitor.is_user_site:
-                logger.info(f"[ОБНОВЛЕНИЕ] {competitor.domain}: пропуск — селекторы не настроены")
-                results.append({
-                    'success': False,
-                    'status': 'no_selectors',
-                    'competitor_id': competitor.id,
-                    'competitor_domain': competitor.domain,
-                })
-                skipped_count += 1
-                continue
-
             result = PriceUpdateService.update_competitor_prices(
                 competitor.id, prefetched_products=collected.get(competitor.id),
                 respect_rate_limit=respect_rate_limit

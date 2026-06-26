@@ -1,7 +1,23 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../utils/api'
-import { ArrowLeft, Loader2, Check, AlertCircle, Eye, ExternalLink } from 'lucide-react'
+import {
+  ArrowLeft,
+  Loader2,
+  Check,
+  AlertCircle,
+  Eye,
+  ExternalLink,
+  Sparkles,
+  ChevronDown,
+} from 'lucide-react'
+
+const METHOD_LABELS = {
+  'json-ld': 'структурированные данные (JSON-LD)',
+  microdata: 'микроразметка (microdata)',
+  'embedded-json': 'встроенные данные страницы',
+  selectors: 'CSS-селекторы',
+}
 
 export default function SelectorsSetup() {
   const { id, competitorId } = useParams()
@@ -15,6 +31,49 @@ export default function SelectorsSetup() {
   const [error, setError] = useState('')
   const [competitor, setCompetitor] = useState(null)
   const [competitorLoading, setCompetitorLoading] = useState(true)
+
+  // авто-режим (превью + подтверждение)
+  const [autoLoading, setAutoLoading] = useState(false)
+  const [preview, setPreview] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [showManual, setShowManual] = useState(false)
+
+  const normalizedUrl = () => (url.startsWith('http') ? url : `https://${url}`)
+
+  const handleAutoPreview = async () => {
+    if (!url) {
+      setError('Укажите URL страницы с товарами')
+      return
+    }
+    setAutoLoading(true)
+    setError('')
+    setPreview(null)
+    try {
+      const response = await api.post('/analysis/preview-products', { url: normalizedUrl() })
+      setPreview(response.data)
+      // авто не нашло товары — сразу разворачиваем ручные селекторы
+      if (!response.data?.success) {
+        setShowManual(true)
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || 'Не удалось получить товары с сайта')
+      setShowManual(true)
+    } finally {
+      setAutoLoading(false)
+    }
+  }
+
+  const handleAutoConfirm = async () => {
+    setSaving(true)
+    setError('')
+    try {
+      await api.post(`/analysis/competitor/${competitorId}/parse`, { url: normalizedUrl() })
+      navigate(`/analysis/${id}`)
+    } catch (err) {
+      setError(err.response?.data?.error || 'Ошибка сохранения товаров')
+      setSaving(false)
+    }
+  }
 
   useEffect(() => {
     const fetchCompetitor = async () => {
@@ -104,13 +163,12 @@ export default function SelectorsSetup() {
           <React.Fragment>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
               {competitor && competitor.is_user_site
-                ? 'Настройка селекторов для вашего сайта'
-                : 'Настройка селекторов'}
+                ? 'Добавление товаров с вашего сайта'
+                : 'Добавление товаров конкурента'}
             </h1>
             <p className="text-gray-600 dark:text-gray-400 mb-6">
-              {competitor && competitor.is_user_site
-                ? 'Укажите CSS-селекторы для названия товара и цены на вашем сайте'
-                : 'Укажите CSS-селекторы для названия товара и цены на сайте конкурента'}
+              Вставьте ссылку на страницу с товарами — мы попробуем определить товары и
+              цены автоматически. Селекторы нужны, только если автоопределение не сработает.
             </p>
           </React.Fragment>
         )}
@@ -155,6 +213,127 @@ export default function SelectorsSetup() {
             </p>
           </div>
 
+          {/* Авто-режим: найти товары по ссылке */}
+          <div>
+            <button
+              onClick={handleAutoPreview}
+              disabled={autoLoading || !url}
+              className="btn-primary flex items-center space-x-2"
+            >
+              {autoLoading ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span>Ищем товары...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-5 w-5" />
+                  <span>Найти товары автоматически</span>
+                </>
+              )}
+            </button>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              Определим товары и цены по ссылке — селекторы указывать не нужно.
+            </p>
+          </div>
+
+          {preview && (
+            <div
+              className={`border rounded-lg p-6 ${
+                preview.success
+                  ? 'border-green-300 bg-green-50 dark:border-green-800 dark:bg-green-900/30'
+                  : 'border-yellow-300 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/30'
+              }`}
+            >
+              {preview.success ? (
+                <React.Fragment>
+                  <div className="flex items-center space-x-2 mb-1">
+                    <Check className="h-6 w-6 text-green-600 dark:text-green-400" />
+                    <h3 className="font-semibold text-green-900 dark:text-green-100">
+                      Найдено товаров: {preview.count}
+                    </h3>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                    Способ: {METHOD_LABELS[preview.method] || preview.method}
+                  </p>
+                  <div className="max-h-72 overflow-auto rounded border dark:border-gray-700 divide-y dark:divide-gray-700 bg-white dark:bg-gray-800">
+                    {preview.products.map((p, i) => (
+                      <div key={i} className="flex items-center justify-between px-3 py-2 text-sm">
+                        {p.url ? (
+                          <a
+                            href={p.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={p.name}
+                            className="text-gray-700 dark:text-gray-300 truncate pr-3 hover:underline hover:text-primary-600 dark:hover:text-primary-400"
+                          >
+                            {p.name}
+                          </a>
+                        ) : (
+                          <span className="text-gray-700 dark:text-gray-300 truncate pr-3">
+                            {p.name}
+                          </span>
+                        )}
+                        <span className="font-semibold text-gray-900 dark:text-white whitespace-nowrap">
+                          {Math.round(p.price)} {p.currency === 'RUB' ? '₽' : p.currency}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {preview.count > preview.products.length && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                      Показаны первые {preview.products.length} из {preview.count}.
+                    </p>
+                  )}
+                  <button
+                    onClick={handleAutoConfirm}
+                    disabled={saving}
+                    className="btn-primary flex items-center space-x-2 mt-4"
+                  >
+                    {saving ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        <span>Сохраняем...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="h-5 w-5" />
+                        <span>Подтвердить и собрать</span>
+                      </>
+                    )}
+                  </button>
+                </React.Fragment>
+              ) : (
+                <div className="flex items-start space-x-2">
+                  <AlertCircle className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
+                  <div>
+                    <h3 className="font-semibold text-yellow-900 dark:text-yellow-100">
+                      Автоматически найти не удалось
+                    </h3>
+                    <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                      Похоже, на сайте нет машиночитаемых данных о товарах. Укажите CSS-селекторы
+                      вручную ниже.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Ручные селекторы — запасной вариант */}
+          <button
+            type="button"
+            onClick={() => setShowManual((v) => !v)}
+            className="flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+          >
+            <ChevronDown
+              className={`h-4 w-4 mr-1 transition-transform ${showManual ? 'rotate-180' : ''}`}
+            />
+            Указать селекторы вручную
+          </button>
+
+          {showManual && (
+          <React.Fragment>
           <div className="grid md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -337,6 +516,8 @@ export default function SelectorsSetup() {
                 <span>Сохранить и собрать товары</span>
               </button>
             </div>
+          )}
+          </React.Fragment>
           )}
         </div>
       </div>

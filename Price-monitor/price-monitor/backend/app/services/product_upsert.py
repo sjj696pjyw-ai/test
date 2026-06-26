@@ -45,6 +45,11 @@ def upsert_competitor_products(competitor_id, products_data, on_existing=None):
             product = existing_products[key]
             old_price = product.price
 
+            # обновляем ссылку на карточку, если пришла свежая
+            new_url = prod_data.get("url")
+            if new_url and product.url != new_url:
+                product.url = new_url
+
             if on_existing is not None:
                 on_existing(product)
 
@@ -73,6 +78,8 @@ def upsert_competitor_products(competitor_id, products_data, on_existing=None):
                 name=name,
                 price=new_price,
                 currency=prod_data.get("currency", "RUB"),
+                url=prod_data.get("url"),
+                external_id=prod_data.get("external_id"),
             )
             db.session.add(product)
             created_count += 1

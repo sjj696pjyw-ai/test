@@ -34,6 +34,25 @@ const productPlural = (n) => {
 
 const cleanUrl = (u) => (u || '').replace(/^https?:\/\//, '').replace(/\/+$/, '')
 
+// Название товара: ссылка на карточку, если url есть, иначе обычный текст.
+const ProductName = ({ name, url, className = '' }) => {
+  const text = name || 'N/A'
+  if (url) {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={text}
+        className={`hover:underline hover:text-primary-600 dark:hover:text-primary-400 ${className}`}
+      >
+        {text}
+      </a>
+    )
+  }
+  return <span className={className}>{text}</span>
+}
+
 const DEMO_DATA = {
   2: {
     id: 2,
@@ -512,6 +531,7 @@ export default function AnalysisDetail() {
       reportGroups.push({
         userProductId: link.user_product?.id,
         userName: link.user_product?.name,
+        userUrl: link.user_product?.url,
         userPrice: link.user_product?.price,
         links: [],
       })
@@ -798,7 +818,7 @@ export default function AnalysisDetail() {
                                   rowSpan={group.links.length}
                                   className={`px-4 py-3 text-sm text-gray-900 dark:text-gray-100 align-middle border-r border-gray-200 dark:border-gray-700 ${highlighted ? 'font-semibold' : ''}`}
                                 >
-                                  {group.userName || 'N/A'}
+                                  <ProductName name={group.userName} url={group.userUrl} />
                                 </td>
                                 <td
                                   rowSpan={group.links.length}
@@ -809,7 +829,7 @@ export default function AnalysisDetail() {
                               </>
                             )}
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                              {link.competitor_product?.name || 'N/A'}
+                              <ProductName name={link.competitor_product?.name} url={link.competitor_product?.url} />
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                               {formatPriceInt(link.competitor_product?.price)}
@@ -960,7 +980,7 @@ export default function AnalysisDetail() {
                       key={product.id}
                       className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border-b border-gray-200 dark:border-gray-700"
                     >
-                      <p className="font-medium text-gray-900 dark:text-gray-100">{product.name}</p>
+                      <p className="font-medium text-gray-900 dark:text-gray-100"><ProductName name={product.name} url={product.url} /></p>
                       <div className="flex items-center space-x-4 mt-1">
                         <p className="text-primary-600 dark:text-primary-400 font-semibold">
                           {formatPrice(product.price)}
@@ -1093,7 +1113,7 @@ export default function AnalysisDetail() {
                           }`}
                         >
                           <p className="text-sm font-medium truncate text-gray-900 dark:text-gray-100">
-                            {product.name}
+                            <ProductName name={product.name} url={product.url} />
                           </p>
                           <span className="flex items-center gap-2 shrink-0">
                             {isLinked && (
@@ -1202,7 +1222,7 @@ export default function AnalysisDetail() {
                                     }`}
                                   >
                                     <p className="text-sm font-medium truncate text-gray-900 dark:text-gray-100">
-                                      {product.name}
+                                      <ProductName name={product.name} url={product.url} />
                                     </p>
                                     <span className="flex items-center gap-2 shrink-0">
                                       {isLinked && (
@@ -1303,7 +1323,7 @@ export default function AnalysisDetail() {
                                 className="px-4 py-3 align-middle border-r border-gray-200 dark:border-gray-700"
                               >
                                 <p className="font-medium text-sm text-gray-900 dark:text-gray-100">
-                                  {group.userName || 'N/A'}
+                                  <ProductName name={group.userName} url={group.userUrl} />
                                 </p>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">
                                   {formatPrice(group.userPrice)}
@@ -1312,7 +1332,7 @@ export default function AnalysisDetail() {
                             )}
                             <td className="px-4 py-3 align-top">
                               <p className="font-medium text-sm text-gray-900 dark:text-gray-100">
-                                {link.competitor_product?.name || 'N/A'}
+                                <ProductName name={link.competitor_product?.name} url={link.competitor_product?.url} />
                               </p>
                               <p className="text-xs text-gray-500 dark:text-gray-400">
                                 {formatPrice(link.competitor_product?.price)}
@@ -1440,7 +1460,7 @@ export default function AnalysisDetail() {
                         className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border-b border-gray-200 dark:border-gray-700"
                       >
                         <p className="font-medium text-gray-900 dark:text-gray-100">
-                          {product.name}
+                          <ProductName name={product.name} url={product.url} />
                         </p>
                         <div className="flex items-center space-x-4 mt-1">
                           <p className="text-gray-600 dark:text-gray-400">

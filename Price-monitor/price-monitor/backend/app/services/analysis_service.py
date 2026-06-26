@@ -158,26 +158,74 @@ class ProductLinkService:
 
 class SiteParsingService:
     @staticmethod
+    def preview_products(url, title_selector=None, price_selector=None, limit=100):
+        """«Сухой» авто-сбор товаров по URL без записи в БД (для предпросмотра).
+
+        Возвращает: {success, method, count, products: [{name, price, currency}]}.
+        method — каким способом нашли (json-ld/microdata/embedded-json/selectors),
+        либо None, если ничего не нашли.
+        """
+        normalized = url if url.startswith(('http://', 'https://')) else f'https://{url}'
+        parser = SiteParser()
+        try:
+            products, method, _ = parser.collect_products(normalized, title_selector, price_selector)
+        except Exception as e:
+            logger.error(f"[ПРЕВЬЮ] ошибка: {url} — {e}")
+            return {'success': False, 'error': 'Не удалось получить товары с сайта',
+                    'method': None, 'count': 0, 'products': []}
+        finally:
+            parser.close()
+
+        return {
+            'success': bool(products),
+            'method': method,
+            'count': len(products),
+            'products': [
+                {'name': p['name'], 'price': p['price'],
+                 'currency': p.get('currency', 'RUB'), 'url': p.get('url')}
+                for p in products[:limit]
+            ],
+        }
+
+    @staticmethod
     def parse_competitor_site(competitor_id, url, title_selector, price_selector):
+        competitor = Competitor.query.get(competitor_id)
+        feed_cache = None
+
         cache_key = _collect_cache_key(competitor_id, url, title_selector, price_selector)
         products = _collect_cache_get(cache_key)
         if products is None:
             logger.info(f"[СБОР] старт: {url}")
             parser = SiteParser()
-            products = parser.parse_products_paginated(url, title_selector, price_selector)
-            logger.info(f"[СБОР] готово: {url} — товаров {len(products) if products else 0}")
+            # YML-фид → авто-извлечение → селекторы (фолбэк); фид берём из кэша
+            products, method, feed_cache = parser.collect_products(
+                url, title_selector, price_selector,
+                feed_url=(competitor.feed_url if competitor else None),
+            )
+            logger.info(
+                f"[СБОР] готово: {url} — товаров {len(products) if products else 0}"
+                f" (способ: {method or 'нет'})"
+            )
         else:
             logger.debug(f"[DEBUG] Сбор: переиспользую {len(products)} товаров из кэша проверки")
 
         if not products:
+            # даже если товаров нет — запоминаем результат поиска фида
+            if competitor and feed_cache is not None:
+                competitor.feed_url = feed_cache
+                db.session.commit()
             return []
 
-        competitor = Competitor.query.get(competitor_id)
         if competitor:
-            competitor.title_selector = title_selector
-            competitor.price_selector = price_selector
+            # селекторы сохраняем только если заданы — авто-извлечению они не нужны
+            if title_selector:
+                competitor.title_selector = title_selector
+            if price_selector:
+                competitor.price_selector = price_selector
             if url:
                 competitor.domain = url
+            if feed_cache is not None:
+                competitor.feed_url = feed_cache
             competitor.last_price_update = datetime.utcnow()
             competitor.update_status = 'success'
 

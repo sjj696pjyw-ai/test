@@ -12,6 +12,26 @@ from config.config import config
 jwt = JWTManager()
 bcrypt = Bcrypt()
 
+
+def _ensure_columns():
+    """Идемпотентно добавляет недостающие колонки (простая миграция для SQLite/PG).
+
+    db.create_all() создаёт только новые таблицы, но не колонки в существующих,
+    поэтому новые поля добавляем вручную через ALTER TABLE, если их ещё нет.
+    """
+    from sqlalchemy import inspect, text
+
+    try:
+        cols = {c['name'] for c in inspect(db.engine).get_columns('competitors')}
+    except Exception:
+        return
+    if 'feed_url' not in cols:
+        try:
+            with db.engine.begin() as conn:
+                conn.execute(text('ALTER TABLE competitors ADD COLUMN feed_url VARCHAR(1000)'))
+        except Exception:
+            pass
+
 def create_app(config_name='default'):
     configure_logging()
     frontend_dist = os.environ.get('FRONTEND_DIST')
@@ -30,6 +50,7 @@ def create_app(config_name='default'):
 
     with app.app_context():
         db.create_all()
+        _ensure_columns()
 
     from app.scheduler import start_scheduler
     start_scheduler(app)

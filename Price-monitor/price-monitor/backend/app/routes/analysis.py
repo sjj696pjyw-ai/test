@@ -228,8 +228,9 @@ def parse_competitor(competitor_id):
     title_selector = data.get('title_selector')
     price_selector = data.get('price_selector')
 
-    if not all([url, title_selector, price_selector]):
-        return jsonify({'error': 'URL and selectors are required'}), 400
+    # Селекторы необязательны: если их нет, сработает авто-извлечение.
+    if not url:
+        return jsonify({'error': 'URL is required'}), 400
 
     products = SiteParsingService.parse_competitor_site(
         competitor_id=competitor_id,
@@ -242,6 +243,19 @@ def parse_competitor(competitor_id):
         'message': 'Products parsed successfully',
         'products': [p.to_dict() for p in products]
     }), 200
+
+@analysis_bp.route('/preview-products', methods=['POST'])
+@jwt_required()
+def preview_products():
+    """«Сухое» авто-извлечение товаров по URL без сохранения в БД — для экрана
+    предпросмотра: пользователь вставляет ссылку и сразу видит найденные товары."""
+    data = request.get_json() or {}
+    url = data.get('url')
+    if not url:
+        return jsonify({'error': 'URL is required'}), 400
+
+    result = SiteParsingService.preview_products(url)
+    return jsonify(result), 200
 
 @analysis_bp.route('/competitor/<int:competitor_id>/verify-selectors', methods=['POST'])
 @jwt_required()

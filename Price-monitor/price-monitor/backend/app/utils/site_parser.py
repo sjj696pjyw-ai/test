@@ -4,11 +4,20 @@ import random
 import re
 import time
 from collections import Counter
-from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 import requests
 from bs4 import BeautifulSoup
 
+from .auto_extract import (
+    auto_extract,
+    count_price_nodes,
+    looks_like_yml,
+    parse_shopify_products,
+    parse_yml,
+    run_extractor,
+    tier_counts,
+)
 from .helpers import get_default_headers, setup_selenium_options
 
 logger = logging.getLogger(__name__)
@@ -25,6 +34,8 @@ class SiteParser:
         self.scroll = scroll
         self._driver = None
         self._reuse_driver = False
+        self._base_url = None  # для абсолютизации ссылок на карточки товаров
+        self._last_fetch_error = None  # причина последней неудачи requests-фетча
 
     def _get_headers(self):
         return get_default_headers()
@@ -97,7 +108,8 @@ class SiteParser:
         service = Service(executable_path=driver_path) if os.path.exists(driver_path) else Service()
 
         driver = webdriver.Chrome(service=service, options=options)
-        driver.set_page_load_timeout(40)
+        driver.set_page_load_timeout(30)
+        driver.set_script_timeout(20)
         return driver
 
     def _get_page_selenium(self, url, scroll_selector=None, do_scroll=True):
@@ -159,59 +171,90 @@ class SiteParser:
                 pass
             self._driver = None
 
-    def _auto_scroll(self, driver, scroll_selector=None, max_rounds=25, pause=0.7, max_seconds=12.0):
+    def _auto_scroll(self, driver, scroll_selector=None, max_rounds=60, pause=0.4,
+                     max_seconds=45.0, settle_timeout=3.0):
         """Прокручивает страницу для ленивой подгрузки товаров.
 
-        Если задан scroll_selector — на каждом шаге скроллит к ПОСЛЕДНЕЙ карточке
-        товара (надёжнее цепляет IntersectionObserver, чем скролл в низ страницы).
-        Когда прокрутка перестаёт подгружать новое — один раз пробует кнопку
-        догрузки («Показать ещё»). Чтобы не крутить пустые циклы, кнопку на одном
-        и том же состоянии страницы жмём не больше раза: если прогресса нет — стоп.
+        Ожидание подгрузки адаптивное: после каждого скролла мы коротко опрашиваем
+        число карточек и ждём прироста до settle_timeout секунд, прежде чем счесть,
+        что подгрузка остановилась. Это важно для сайтов, где очередная порция
+        прилетает XHR-ом медленнее фиксированной паузы — иначе скролл преждевременно
+        решает, что товары кончились, и обрывается на первой порции.
+
+        Если задан scroll_selector — скроллим к ПОСЛЕДНЕЙ карточке (надёжнее цепляет
+        IntersectionObserver, чем скролл в низ страницы). Когда прироста нет даже за
+        settle_timeout — один раз пробуем кнопку догрузки («Показать ещё»); если и
+        она не помогает после пары застоев — выходим. Быстрые/короткие каталоги
+        завершаются рано, полный бюджет тратится только на реально длинной подгрузке.
         """
         if not self.scroll:
             return
-        last_marker = None
-        stable = 0
-        clicked_at = set()
+
+        def current_count():
+            try:
+                if scroll_selector:
+                    return driver.execute_script(
+                        "return document.querySelectorAll(arguments[0]).length;",
+                        scroll_selector) or 0
+                return driver.execute_script("return document.body.scrollHeight") or 0
+            except Exception:
+                return 0
+
+        def scroll_step():
+            moved = False
+            if scroll_selector:
+                try:
+                    moved = bool(driver.execute_script(
+                        "const e = document.querySelectorAll(arguments[0]);"
+                        "if (e.length) { e[e.length - 1].scrollIntoView({block: 'end'}); return true; }"
+                        "return false;",
+                        scroll_selector))
+                except Exception:
+                    moved = False
+            if not moved:
+                try:
+                    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                except Exception:
+                    pass
+
         deadline = time.monotonic() + max_seconds
+        poll = 0.3
+        stalls = 0
+        clicked = False
+        last = current_count()
+
         for _ in range(max_rounds):
             if time.monotonic() > deadline:
                 break
-            count = 0
-            if scroll_selector:
-                try:
-                    count = driver.execute_script(
-                        "const e = document.querySelectorAll(arguments[0]);"
-                        "if (e.length) { e[e.length - 1].scrollIntoView({block: 'end'}); }"
-                        "return e.length;",
-                        scroll_selector
-                    ) or 0
-                except Exception:
-                    count = 0
-            if not scroll_selector or count == 0:
-                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(pause)
-            if scroll_selector:
-                marker = count
-            else:
-                try:
-                    marker = driver.execute_script("return document.body.scrollHeight")
-                except Exception:
-                    marker = None
-            if marker == last_marker:
-                stable += 1
-                if stable >= 2:
-                    if marker in clicked_at:
-                        break
-                    clicked_at.add(marker)
-                    if self._click_load_more(driver):
-                        stable = 0
-                        time.sleep(pause)
-                        continue
+            scroll_step()
+
+            # ждём прироста карточек короткими опросами (до settle_timeout)
+            grew = False
+            wait_until = min(time.monotonic() + settle_timeout, deadline)
+            while time.monotonic() < wait_until:
+                time.sleep(poll)
+                cur = current_count()
+                if cur > last:
+                    last = cur
+                    grew = True
                     break
-            else:
-                stable = 0
-                last_marker = marker
+
+            if grew:
+                stalls = 0
+                clicked = False
+                continue
+
+            # прироста нет — пробуем кнопку догрузки один раз, иначе считаем застой
+            stalls += 1
+            if not clicked and self._click_load_more(driver):
+                clicked = True
+                stalls = 0
+                time.sleep(pause)
+                continue
+            if stalls >= 2:
+                break
+
+        logger.debug(f"[DEBUG] Автоскролл: итоговый маркер {last}")
 
     def _click_load_more(self, driver):
         """Ищет и кликает кнопку догрузки товаров («Показать ещё» и т.п.).
@@ -272,21 +315,34 @@ class SiteParser:
             logger.error(f"Requests fetch error for {url}: {e}")
             return None
 
-    def _fetch_html_requests(self, url):
-        """Быстрый GET без задержки (для параллельной загрузки страниц)."""
-        try:
-            headers = self._get_headers()
-            response = self.session.get(url, headers=headers, timeout=15, allow_redirects=True)
-            response.raise_for_status()
-            content_type = response.headers.get('Content-Type', '')
-            charset = None
-            if 'charset=' in content_type.lower():
-                charset = content_type.lower().split('charset=')[-1].split(';')[0].strip()
-            if not charset or charset in ('iso-8859-1', 'latin-1'):
-                response.encoding = response.apparent_encoding or 'utf-8'
-            return response.text
-        except Exception:
-            return None
+    def _fetch_html_requests(self, url, attempts=2):
+        """Быстрый GET с ретраем. Возвращает HTML или None; причину последней
+        неудачи кладём в self._last_fetch_error (для диагностики)."""
+        last = None
+        for i in range(attempts):
+            try:
+                headers = self._get_headers()
+                response = self.session.get(url, headers=headers, timeout=20, allow_redirects=True)
+                response.raise_for_status()
+                content_type = response.headers.get('Content-Type', '')
+                charset = None
+                if 'charset=' in content_type.lower():
+                    charset = content_type.lower().split('charset=')[-1].split(';')[0].strip()
+                if not charset or charset in ('iso-8859-1', 'latin-1'):
+                    response.encoding = response.apparent_encoding or 'utf-8'
+                return response.text
+            except requests.HTTPError as e:
+                code = e.response.status_code if e.response is not None else None
+                last = f"HTTP {code}"
+                if code and code < 500 and code != 429:
+                    break  # 4xx (кроме 429) — повтор не поможет
+            except Exception as e:
+                last = type(e).__name__  # Timeout / ConnectionError / SSLError ...
+            if i + 1 < attempts:
+                time.sleep(0.8)
+        self._last_fetch_error = last
+        logger.debug(f"[DEBUG] requests не получил {url}: {last}")
+        return None
 
     def parse_products(self, html, name_selector, price_selector):
         if not html:
@@ -338,15 +394,48 @@ class SiteParser:
             price = self._clean_price(price_text)
 
             if name and price is not None:
-                products.append({
-                    'name': name,
-                    'price': price,
-                    'currency': 'RUB'
-                })
+                item = {'name': name, 'price': price, 'currency': 'RUB'}
+                url = self._extract_href(name_elements[i]) if i < len(name_elements) else None
+                if url:
+                    item['url'] = url
+                products.append(item)
             elif name and price is None:
                 logger.debug(f"[DEBUG] Product '{name}' has invalid price: '{price_text}'")
 
         logger.debug(f"[DEBUG] Successfully parsed {len(products)} valid products")
+        return products
+
+    def _extract_href(self, el):
+        """Ссылка на карточку товара по элементу названия: сам <a>, ближайший
+        родитель-<a> или вложенный <a>. Возвращает абсолютный URL или None."""
+        a = None
+        if el.name == 'a' and el.get('href'):
+            a = el
+        else:
+            a = el.find_parent('a', href=True) or el.find('a', href=True)
+        if not a or not a.get('href'):
+            return None
+        href = a['href'].strip()
+        if not href or href.startswith(('#', 'javascript:', 'mailto:', 'tel:')):
+            return None
+        if self._base_url:
+            try:
+                return urljoin(self._base_url, href)
+            except ValueError:
+                return href
+        return href
+
+    def _absolutize(self, products, base_url):
+        """Делает относительные ссылки товаров абсолютными относительно base_url."""
+        if not base_url:
+            return products
+        for p in products:
+            u = p.get('url')
+            if u and not u.startswith(('http://', 'https://')):
+                try:
+                    p['url'] = urljoin(base_url, u)
+                except ValueError:
+                    pass
         return products
 
     def _detect_page_param(self, html):
@@ -375,6 +464,25 @@ class SiteParser:
         query = parse_qs(parts.query)
         query[param] = [str(value)]
         return urlunparse(parts._replace(query=urlencode(query, doseq=True)))
+
+    @staticmethod
+    def _with_trailing_slash(url):
+        """Добавляет завершающий слэш к пути, если его нет (и путь не файл).
+
+        Нужно для каталогов, которые без слэша отдают 404 (типично для Bitrix).
+        Не трогаем URL с query/фрагментом или с расширением в последнем сегменте
+        (например .../item.html), чтобы не сломать корректные адреса.
+        """
+        parts = urlparse(url)
+        if parts.query or parts.fragment:
+            return url
+        path = parts.path or '/'
+        if path.endswith('/'):
+            return url
+        last = path.rsplit('/', 1)[-1]
+        if '.' in last:  # похоже на файл (.html/.php/...) — не трогаем
+            return url
+        return urlunparse(parts._replace(path=path + '/'))
 
     def _tally_matches(self, html, name_selector, price_selector, stats):
         """Добавляет в stats число сырых совпадений селекторов на странице
@@ -423,13 +531,16 @@ class SiteParser:
                                  first_html=None, max_pages=50, stats=None):
         """Собирает товары по тирам:
 
-        1) если на странице есть ссылки пагинации — обходим страницы по URL (без
+        0) если на странице есть явная ссылка «показать всё» (Bitrix SHOWALL_x=1) —
+           забираем все товары одним обычным GET (надёжнее всего, без браузера);
+        1) иначе, если есть ссылки пагинации — обходим страницы по URL (без
            прокрутки) и дедупим абсолютные дубли;
         2) иначе пробуем «показать всё» / query-параметры выдачи;
         3) иначе — прокрутка (бесконечная подгрузка) как последнее средство.
 
         Если тир не дал прироста к базовой странице — переходим к следующему.
         """
+        self._base_url = url  # ссылки на карточки делаем абсолютными от этого URL
         if first_html is not None:
             base_html = first_html
         else:
@@ -444,6 +555,29 @@ class SiteParser:
             if stats is not None:
                 stats.clear()
                 self._tally_matches(html, name_selector, price_selector, stats)
+
+        # Если переданный first_html не дал товаров (браузер мог вернуть страницу
+        # ошибки/таймаут, как бывает на «тяжёлых» сайтах), берём базу через надёжный
+        # requests — в нём обычно есть серверный рендер каталога со ссылками
+        # пагинации и «показать всё».
+        if not base_products:
+            req_html = self._fetch_html_requests(url)
+            req_products = self.parse_products(req_html, name_selector, price_selector) if req_html else []
+            if len(req_products) > len(base_products):
+                base_html, base_products = req_html, req_products
+
+        # Явная ссылка «показать всё» (Bitrix SHOWALL_x=1) — самый надёжный путь:
+        # один обычный GET отдаёт все товары серверным рендером, без headless-браузера
+        # и без обхода страниц по URL. Пробуем её раньше нумерованной пагинации.
+        showall = re.search(r'(SHOWALL_\d+)=1', base_html or '')
+        if showall:
+            showall_url = self._with_page_param(url, showall.group(1), 1)
+            html = self._fetch_html_requests(showall_url)
+            prods = self.parse_products(html, name_selector, price_selector) if html else []
+            if len(prods) > len(base_products):
+                logger.debug(f"[DEBUG] SHOWALL: {showall_url} -> {len(prods)} товаров")
+                set_stats(html)
+                return self._dedup_absolute(prods)
 
         param = self._detect_page_param(base_html)
         if param:
@@ -517,6 +651,331 @@ class SiteParser:
             return self._dedup_absolute(base_products)
         set_stats(final_html)
         return self._dedup_absolute(prods)
+
+    def _fetch_full_html(self, url):
+        """HTML каталога со всеми товарами для авто-извлечения.
+
+        Берём обычным requests (надёжно и быстро, структурные данные лежат в
+        серверном HTML), при пустом ответе — рендер браузером. Если на странице
+        есть ссылка «показать всё» (Bitrix SHOWALL_x=1) — забираем страницу со
+        всеми товарами, чтобы структурные данные охватили весь каталог.
+        """
+        source = 'requests'
+        html = self._fetch_html_requests(url)
+        if not html:
+            # Многие каталоги (особенно на Bitrix) без завершающего слэша отдают
+            # 404 — пробуем тот же адрес со слэшем, прежде чем идти в браузер.
+            slashed = self._with_trailing_slash(url)
+            if slashed != url:
+                html = self._fetch_html_requests(slashed)
+                if html:
+                    url = slashed
+                    source = 'requests-slash'
+        if not html:
+            html = self.get_page(url, scroll=False)
+            source = 'selenium'
+        if not html:
+            return None, url, None
+        m = re.search(r'(SHOWALL_\d+)=1', html)
+        if m:
+            all_html = self._fetch_html_requests(self._with_page_param(url, m.group(1), 1))
+            if all_html:
+                return all_html, url, source + '+showall'
+        return html, url, source
+
+    def _find_feed_candidates(self, base_url, html):
+        """URL-кандидаты YML/price-фида: явные ссылки в HTML и robots.txt + пара
+        типовых путей. Возвращает упорядоченный список без дублей (макс. 6)."""
+        parts = urlparse(base_url)
+        origin = f"{parts.scheme}://{parts.netloc}"
+        cands = []
+
+        def add(u):
+            if not u:
+                return
+            u = urljoin(base_url, u.strip())
+            if u not in cands and urlparse(u).netloc == parts.netloc:
+                cands.append(u)
+
+        feedish = re.compile(r"(yml|yandex|market|price|export|feed)", re.IGNORECASE)
+        # 1) явные ссылки в разметке (.yml/.xml, упоминающие фид)
+        if html:
+            for m in re.finditer(r'href=["\']([^"\']+\.(?:yml|xml)(?:\?[^"\']*)?)["\']', html, re.IGNORECASE):
+                href = m.group(1)
+                if href.lower().endswith('.yml') or feedish.search(href):
+                    add(href)
+        # 2) robots.txt — строки Sitemap и любые .yml
+        robots = self._fetch_html_requests(f"{origin}/robots.txt")
+        if robots:
+            for m in re.finditer(r'(?:Sitemap:\s*|\b)(https?://\S+\.(?:yml|xml))', robots, re.IGNORECASE):
+                u = m.group(1)
+                if u.lower().endswith('.yml') or feedish.search(u):
+                    add(u)
+        # 3) типовые пути (коротко, чтобы не плодить 404)
+        for p in ('/yml', '/yandex.xml', '/export/yml'):
+            add(origin + p)
+        return cands[:6]
+
+    def _try_price_feed(self, url, html, cached_feed=None):
+        """Тир 0: YML/price-фид с учётом кэша.
+
+        cached_feed: None — не знаем (ищем), '' — фида нет (пропускаем), иначе URL
+        фида (используем напрямую). Возвращает (products, feed_cache), где
+        feed_cache — значение для записи в кэш (URL или ''), либо None если кэш
+        менять не нужно.
+        """
+        # известно, что фида нет — не тратим запросы
+        if cached_feed == '':
+            return [], None
+        # пробуем закэшированный URL
+        if cached_feed:
+            text = self._fetch_html_requests(cached_feed)
+            if text and looks_like_yml(text):
+                products = parse_yml(text)
+                if products:
+                    logger.debug(f"[DEBUG] YML-фид (кэш): {cached_feed} -> {len(products)} товаров")
+                    return products, None  # кэш актуален, не меняем
+            # фид пропал/переехал — переоткрываем ниже
+        # поиск фида
+        for cand in self._find_feed_candidates(url, html):
+            text = self._fetch_html_requests(cand)
+            if not text or not looks_like_yml(text):
+                continue
+            products = parse_yml(text)
+            if products:
+                logger.debug(f"[DEBUG] YML-фид: {cand} -> {len(products)} товаров")
+                return products, cand  # запомнить найденный URL
+        return [], ''  # проверили — фида нет
+
+    def _try_shopify(self, url, html):
+        """Тир: Shopify /products.json. Пробуем только если страница похожа на
+        Shopify (иначе не плодим запросы). Возвращает товары или []."""
+        h = (html or "").lower()
+        if not any(s in h for s in ("cdn.shopify.com", "/cdn/shop/", "myshopify.com", "shopify.")):
+            return []
+        parts = urlparse(url)
+        origin = f"{parts.scheme}://{parts.netloc}"
+        bases = []
+        m = re.search(r"/collections/([^/?#]+)", parts.path)
+        if m:
+            bases.append(f"{origin}/collections/{m.group(1)}/products.json")
+        bases.append(f"{origin}/products.json")
+
+        for base in bases:
+            products = []
+            for page in range(1, 11):  # до 2500 товаров
+                text = self._fetch_html_requests(f"{base}?limit=250&page={page}")
+                if not text:
+                    break
+                page_products = parse_shopify_products(text)
+                if not page_products:
+                    break
+                products.extend(page_products)
+                if len(page_products) < 250:
+                    break
+            if products:
+                logger.debug(f"[DEBUG] Shopify products.json: {base} -> {len(products)} товаров")
+                return products
+        return []
+
+    # ---- многостраничный сбор для авто-извлечения ----
+
+    _PAGE_RE = re.compile(r'/p(\d+)/|/page/(\d+)/|[?&](?:PAGEN_\d+|page|p|PAGE)=(\d+)')
+
+    @staticmethod
+    def _page_template(href, k):
+        """Шаблон URL страницы: заменяет номер k на плейсхолдер и в пути (/pK/,
+        /page/K/), и в query (?PAGEN_x=K/?page=K). Поддерживает оба сразу."""
+        ph = '\x00'
+        t = re.sub(rf'(/p){k}(/)', rf'\g<1>{ph}\g<2>', href)
+        t = re.sub(rf'(/page/){k}(/)', rf'\g<1>{ph}\g<2>', t)
+        t = re.sub(rf'([?&](?:PAGEN_\d+|page|p|PAGE)=){k}(?=$|[&#])', rf'\g<1>{ph}', t)
+        return t if ph in t else None
+
+    def _page_urls_from_pagination(self, base_url, html, max_pages=50):
+        """Список абсолютных URL страниц 2..max по ссылкам пагинации в HTML
+        (и query, и путь). [] — пагинации нет."""
+        if not html:
+            return []
+        pages = {}
+        for m in re.finditer(r'href=["\']([^"\']+)["\']', html):
+            href = m.group(1)
+            found = self._PAGE_RE.search(href)
+            if not found:
+                continue
+            num = int(next(g for g in found.groups() if g))
+            if 1 <= num <= 200:
+                pages.setdefault(num, href)
+        if not pages:
+            return []
+        max_page = max(pages)
+        if max_page < 2:
+            return []
+        k = min(p for p in pages if p >= 2)
+        template = self._page_template(urljoin(base_url, pages[k]), k)
+        if not template:
+            return []
+        host = urlparse(base_url).netloc
+        urls = []
+        for p in range(2, min(max_page, max_pages) + 1):
+            u = template.replace('\x00', str(p))
+            if urlparse(u).netloc == host:
+                urls.append(u)
+        return urls
+
+    @staticmethod
+    def _looks_scrollable(html):
+        """Есть ли на странице признаки догрузки (кнопка «показать ещё» / скролл)."""
+        h = (html or '').lower()
+        return any(s in h for s in (
+            'показать ещё', 'показать еще', 'показать больше', 'show more', 'load more',
+            'show-more', 'data-show-more', 'data-autoclick-show-more', 'load_more',
+        ))
+
+    def _auto_collect(self, url, base_html, html_source):
+        """Авто-извлечение с обходом многостраничности.
+
+        Тиры: базовая страница → (SHOWALL уже учтён в _fetch_full_html) →
+        нумерованная пагинация по URL (requests) → показать ещё/скролл (браузер).
+        Возвращает (products, method) с накоплением и дедупом по (имя, цена).
+        """
+        products, method = auto_extract(base_html)
+        if not products:
+            return [], None
+
+        seen, acc = set(), []
+
+        def add(items):
+            n = 0
+            for p in items:
+                key = (p['name'].strip().lower(), round(float(p['price']), 2))
+                if key in seen:
+                    continue
+                seen.add(key)
+                acc.append(p)
+                n += 1
+            return n
+
+        add(products)
+
+        # SHOWALL уже вернул весь каталог одной страницей — пагинация не нужна
+        if html_source and 'showall' in html_source:
+            return acc, method
+
+        # Тир: нумерованная пагинация по URL
+        page_urls = self._page_urls_from_pagination(url, base_html)
+        if page_urls:
+            zero = 0
+            last = 1
+            for u in page_urls:
+                html = self._fetch_html_requests(u)
+                added = add(run_extractor(method, html)) if html else 0
+                last += 1
+                if added == 0:
+                    zero += 1
+                    if zero >= 2:
+                        break
+                else:
+                    zero = 0
+            logger.debug(f"[DEBUG] Пагинация (авто, {method}): до стр. {last}, всего {len(acc)}")
+            return acc, method
+
+        # Тир: показать ещё / бесконечный скролл — рендер браузером со скроллом
+        if html_source and html_source.startswith('requests') and self._looks_scrollable(base_html):
+            scrolled = self.get_page(url, scroll=True)
+            if scrolled:
+                add(run_extractor(method, scrolled))
+                logger.debug(f"[DEBUG] Скролл (авто, {method}): всего {len(acc)}")
+
+        return acc, method
+
+    def collect_products(self, url, name_selector=None, price_selector=None, feed_url=None):
+        """Селектор-независимый сбор товаров по URL.
+
+        Порядок: YML/price-фид → авто-извлечение (JSON-LD → microdata →
+        встроенный JSON → DOM) → ручные селекторы (если заданы).
+
+        feed_url — закэшированное значение фида (см. _try_price_feed).
+        Возвращает (products, method, feed_cache), где feed_cache — значение для
+        записи в кэш фида (URL / '' / None=не менять); method —
+        'yml' / 'json-ld' / 'microdata' / 'embedded-json' / 'dom' / 'selectors' / None.
+        """
+        full_html, url, html_source = self._fetch_full_html(url)
+
+        # тир 0: YML/price-фид — полный каталог одним XML, без рендера
+        feed_products, feed_cache = self._try_price_feed(url, full_html, cached_feed=feed_url)
+        if feed_products:
+            feed_products = self._absolutize(feed_products, url)
+            return self._dedup_absolute(feed_products), 'yml', feed_cache
+
+        # Shopify /products.json (если сайт на Shopify)
+        shopify = self._try_shopify(url, full_html)
+        if shopify:
+            shopify = self._absolutize(shopify, url)
+            return self._dedup_absolute(shopify), 'shopify', feed_cache
+
+        products, method = self._auto_collect(url, full_html, html_source) if full_html else ([], None)
+        if products:
+            products = self._absolutize(products, url)
+            products = self._dedup_absolute(products)
+            self._log_auto_result(url, method, len(products), full_html)
+            return products, method, feed_cache
+
+        if name_selector and price_selector:
+            prods = self.parse_products_paginated(url, name_selector, price_selector)
+            if prods:
+                return prods, 'selectors', feed_cache
+
+        self._log_auto_failure(url, full_html, html_source, feed_cache, name_selector, price_selector)
+        return [], None, feed_cache
+
+    def _log_auto_result(self, url, method, n, html):
+        """Лог успешного авто-сбора. Если товаров подозрительно мало при многих
+        «ценовых» узлах на странице — пишем [ДИАГНОСТИКА] (вероятно частичный
+        источник, напр. JSON-LD с одним товаром на странице-листинге)."""
+        logger.debug(f"[DEBUG] Авто-извлечение ({method}): {n} товаров — {url}")
+        # Диагностика не должна ломать успешный сбор — оборачиваем в try.
+        try:
+            if n < 5:
+                pn = count_price_nodes(html)
+                if pn >= max(8, n * 3):
+                    logger.warning(
+                        "[ДИАГНОСТИКА] подозрительно мало (%s): товаров=%d, ценовых узлов на "
+                        "странице=%d | url=%s | тиры=%s",
+                        method, n, pn, url, tier_counts(html),
+                    )
+        except Exception as e:
+            logger.debug(f"[DEBUG] диагностика результата не удалась для {url}: {e}")
+
+    def _log_auto_failure(self, url, html, html_source, feed_cache, name_selector, price_selector):
+        """Диагностика неудачи авто-сбора — чтобы потом анализировать причины.
+
+        Пишем одной greppable-строкой [ДИАГНОСТИКА]: как получили HTML и его
+        размер, был ли фид, разбивку по HTML-тирам (сколько дал каждый) и число
+        «ценовых» узлов. По ней видно, на каком шаге «отвалились»:
+          - html=None/мелкий → сайт не отдал страницу (JS-рендер/блокировка);
+          - price_nodes большое, а тиры 0 → проблема структуры/валюты (правим DOM);
+          - json-ld=1 при многих price_nodes → битый/частичный JSON-LD;
+          - всё 0 и price_nodes 0 → на странице нет цен (не та страница/каталог).
+        """
+        try:
+            counts = tier_counts(html)
+            feed_state = 'нет' if feed_cache == '' else ('кэш' if feed_cache is None else feed_cache)
+            # если страницу вообще не получили — показываем причину фетча
+            fetch_err = f" ошибка_фетча={self._last_fetch_error}" if not html and self._last_fetch_error else ""
+            logger.warning(
+                "[ДИАГНОСТИКА] авто-сбор пуст: url=%s | html=%s(%d)%s | фид=%s | "
+                "селекторы=%s | тиры=%s",
+                url,
+                html_source,
+                len(html or ''),
+                fetch_err,
+                feed_state,
+                'да' if (name_selector and price_selector) else 'нет',
+                counts,
+            )
+        except Exception as e:
+            logger.warning(f"[ДИАГНОСТИКА] не удалось собрать диагностику для {url}: {e}")
 
     def verify_selectors(self, html, name_selector, price_selector):
         if not html:

@@ -14,8 +14,6 @@ import {
   Filter,
   X,
   ChevronDown,
-  RefreshCw,
-  AlertTriangle,
   ArrowUp,
   ArrowDown,
 } from 'lucide-react'
@@ -44,15 +42,13 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showRegionDropdown, setShowRegionDropdown] = useState(false)
   const regionDropdownRef = useRef(null)
-  const { success, error: showError, warning } = useToast()
+  const { success, error: showError } = useToast()
   const navigate = useNavigate()
   const location = useLocation()
   const isDemo = location.state?.demo === true
 
   const [events, setEvents] = useState([])
   const [eventsLoading, setEventsLoading] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
-  const [problemIds, setProblemIds] = useState([])
   const [eventFrom, setEventFrom] = useState('')
   const [eventTo, setEventTo] = useState('')
 
@@ -112,40 +108,6 @@ export default function Dashboard() {
     if (!isDemo) fetchEvents()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDemo, eventFrom, eventTo])
-
-  const handleRefreshAll = async () => {
-    if (isDemo) {
-      showError('Обновление недоступно в демо-режиме')
-      return
-    }
-    if (refreshing) return
-    setRefreshing(true)
-    try {
-      const before = events.length
-      const res = await api.post('/analysis/update-all-prices')
-      const data = res.data
-      setProblemIds(data.problem_analysis_ids || [])
-      const after = await fetchEvents()
-      await fetchAnalyses()
-      const newCount = Math.max(0, (after?.length || 0) - before)
-      if (data.any_rate_limited) {
-        showError('Обновление цен доступно раз в 3 минуты')
-      } else if (data.need_selectors) {
-        warning('Сначала настройте селекторы у конкурентов — обновлять нечего')
-      } else if (data.any_problem) {
-        warning('Есть проблемы с обновлением в некоторых анализах')
-      } else if (newCount > 0) {
-        success(`Цены обновлены. Новых событий: ${newCount}`)
-      } else {
-        success('Цены обновлены. Новых событий нет')
-      }
-    } catch (e) {
-      console.error('Error refreshing all:', e)
-      showError('Не удалось обновить цены')
-    } finally {
-      setRefreshing(false)
-    }
-  }
 
   const deleteAnalysis = async (id) => {
     try {
@@ -300,14 +262,6 @@ export default function Dashboard() {
                 className="text-primary-600 dark:text-primary-400 hover:underline"
               >
                 За всё время
-              </button>
-              <button
-                onClick={handleRefreshAll}
-                disabled={refreshing || isDemo}
-                title="Обновить цены по всем анализам"
-                className={`p-2 rounded-lg text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${refreshing || isDemo ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
               </button>
             </div>
           </div>
@@ -495,14 +449,6 @@ export default function Dashboard() {
                     <span className="truncate max-w-md">
                       {analysis.name || `Анализ #${analysis.id}`}
                     </span>
-                    {problemIds.includes(analysis.id) && (
-                      <span
-                        className="text-yellow-500 dark:text-yellow-400 shrink-0"
-                        title="Цены не удаётся обновить — проверьте селекторы или некоторые сайты сейчас недоступны"
-                      >
-                        <AlertTriangle className="h-4 w-4" />
-                      </span>
-                    )}
                   </h3>
                   <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
                     <span className="flex items-center space-x-1">
