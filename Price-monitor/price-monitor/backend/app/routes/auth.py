@@ -20,8 +20,23 @@ def validate_email(email):
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(pattern, email) is not None
 
+PASSWORD_MIN = 8
+
+
+def password_error(password):
+    """Возвращает текст ошибки или None, если пароль соответствует политике:
+    не менее PASSWORD_MIN символов, хотя бы одна буква и хотя бы одна цифра."""
+    if len(password) < PASSWORD_MIN:
+        return f'Пароль должен быть не менее {PASSWORD_MIN} символов'
+    if not re.search(r'[A-Za-zА-Яа-яЁё]', password):
+        return 'Пароль должен содержать хотя бы одну букву'
+    if not re.search(r'\d', password):
+        return 'Пароль должен содержать хотя бы одну цифру'
+    return None
+
+
 def validate_password(password):
-    return len(password) >= 6
+    return password_error(password) is None
 
 
 def _frontend_base():
@@ -67,8 +82,9 @@ def register():
     if not validate_email(email):
         return jsonify({'error': 'Invalid email format'}), 400
 
-    if not validate_password(password):
-        return jsonify({'error': 'Password must be at least 6 characters'}), 400
+    pwd_err = password_error(password)
+    if pwd_err:
+        return jsonify({'error': pwd_err}), 400
 
     if User.query.filter_by(email=email).first():
         return jsonify({'error': 'Email already registered'}), 409
@@ -221,8 +237,9 @@ def reset_password():
     if not token or not new_password:
         return jsonify({'error': 'Token and new password are required'}), 400
 
-    if not validate_password(new_password):
-        return jsonify({'error': 'Password must be at least 6 characters'}), 400
+    pwd_err = password_error(new_password)
+    if pwd_err:
+        return jsonify({'error': pwd_err}), 400
 
     try:
         decoded = decode_token(token)

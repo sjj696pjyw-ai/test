@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useToast } from '../context/ToastContext'
 import api from '../utils/api'
 import { Lock, CheckCircle } from 'lucide-react'
+import { passwordError } from '../utils/password'
 
 export default function ResetPassword() {
   const [params] = useSearchParams()
@@ -21,8 +22,9 @@ export default function ResetPassword() {
       showError('Ссылка недействительна')
       return
     }
-    if (password.length < 6) {
-      showError('Пароль должен быть не менее 6 символов')
+    const pe = passwordError(password)
+    if (pe) {
+      showError(pe)
       return
     }
     if (password !== confirm) {
@@ -77,6 +79,9 @@ export default function ResetPassword() {
                   placeholder="••••••••"
                 />
               </div>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Минимум 8 символов, хотя бы одна буква и одна цифра
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { Mail, Lock, AlertCircle, CheckCircle } from 'lucide-react'
+import { passwordError, passwordStrength } from '../utils/password'
 
 export default function Register() {
   const [email, setEmail] = useState('')
@@ -27,8 +28,9 @@ export default function Register() {
 
     if (!password) {
       newErrors.password = 'Пароль обязателен'
-    } else if (password.length < 6) {
-      newErrors.password = 'Пароль должен быть не менее 6 символов'
+    } else {
+      const pe = passwordError(password)
+      if (pe) newErrors.password = pe
     }
 
     if (!confirmPassword) {
@@ -69,8 +71,7 @@ export default function Register() {
       })
   }
 
-  const passwordStrength =
-    password.length >= 6 ? 'bg-green-500' : password.length >= 4 ? 'bg-yellow-500' : 'bg-gray-300'
+  const strength = passwordStrength(password)
 
   return (
     <div className="min-h-[80vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -148,20 +149,18 @@ export default function Register() {
                   if (errors.password) setErrors({ ...errors, password: '' })
                 }}
                 className={`flex-1 px-3 py-2.5 bg-transparent outline-none text-gray-900 dark:text-gray-100 dark:bg-transparent ${errors.password ? 'border-red-500' : ''}`}
-                placeholder="Минимум 6 символов"
+                placeholder="Минимум 8 символов"
               />
             </div>
             {password.length > 0 && (
               <div className="mt-2 flex items-center gap-2">
                 <div className="flex-1 h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                   <div
-                    className={`h-full ${passwordStrength} transition-all`}
-                    style={{ width: `${Math.min(100, password.length * 10)}%` }}
+                    className={`h-full ${strength.color} transition-all`}
+                    style={{ width: `${(strength.score / 4) * 100}%` }}
                   ></div>
                 </div>
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {password.length < 4 ? 'Слабый' : password.length < 6 ? 'Средний' : 'Надёжный'}
-                </span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">{strength.label}</span>
               </div>
             )}
             {errors.password && (
@@ -171,7 +170,7 @@ export default function Register() {
               </p>
             )}
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Пароль может содержать любые символы
+              Минимум 8 символов, хотя бы одна буква и одна цифра
             </p>
           </div>
 

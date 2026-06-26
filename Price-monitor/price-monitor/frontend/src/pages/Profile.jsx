@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { Mail, Calendar, AlertCircle, Lock, User } from 'lucide-react'
 import { formatDate } from '../utils/export'
 import { useToast } from '../context/ToastContext'
+import { passwordError } from '../utils/password'
 import api from '../utils/api'
 
 export default function Profile() {
@@ -32,8 +33,9 @@ export default function Profile() {
       return
     }
 
-    if (newPassword.length < 6) {
-      showError('Пароль должен быть не менее 6 символов')
+    const pe = passwordError(newPassword)
+    if (pe) {
+      showError(pe)
       setLoading(false)
       return
     }
