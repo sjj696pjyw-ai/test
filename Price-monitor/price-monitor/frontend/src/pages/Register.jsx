@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { Mail, Lock, AlertCircle, CheckCircle } from 'lucide-react'
@@ -53,9 +53,11 @@ export default function Register() {
     register(email, password)
       .then(() => {
         setStatus('success')
-        setStatusMessage('Регистрация успешна!')
-        showSuccessToast('Регистрация прошла успешно!')
-        setTimeout(() => navigate('/dashboard'), 500)
+        setStatusMessage(
+          `Мы отправили письмо на ${email}. Перейдите по ссылке из письма, чтобы подтвердить email и войти.`
+        )
+        showSuccessToast('Регистрация успешна — подтвердите email')
+        // не уводим в дашборд: вход откроется после подтверждения почты
       })
       .catch((err) => {
         const errorMsg = err.response?.data?.error || 'Произошла ошибка при регистрации'

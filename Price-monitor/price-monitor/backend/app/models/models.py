@@ -11,6 +11,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(256), nullable=False)
+    email_confirmed = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     analyses = db.relationship('Analysis', backref='user', lazy='dynamic', cascade='all, delete-orphan')
@@ -25,6 +26,7 @@ class User(db.Model):
         return {
             'id': self.id,
             'email': self.email,
+            'email_confirmed': bool(self.email_confirmed),
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 

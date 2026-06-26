@@ -7,6 +7,8 @@ import Home from './pages/Home'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword from './pages/ResetPassword'
+import ConfirmEmail from './pages/ConfirmEmail'
 import Dashboard from './pages/Dashboard'
 import Profile from './pages/Profile'
 import AnalysisDetail from './pages/AnalysisDetail'
@@ -96,6 +98,8 @@ export default function App() {
                     </PublicRoute>
                   }
                 />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/confirm-email" element={<ConfirmEmail />} />
                 <Route
                   path="/dashboard"
                   element={

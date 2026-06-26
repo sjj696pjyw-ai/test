@@ -28,19 +28,28 @@ export function AuthProvider({ children }) {
     }
   }
 
+  const setSession = (data) => {
+    localStorage.setItem('access_token', data.access_token)
+    localStorage.setItem('refresh_token', data.refresh_token)
+    setUser(data.user)
+  }
+
   const login = async (email, password) => {
     const response = await api.post('/auth/login', { email, password })
-    localStorage.setItem('access_token', response.data.access_token)
-    localStorage.setItem('refresh_token', response.data.refresh_token)
-    setUser(response.data.user)
+    setSession(response.data)
     return response.data
   }
 
+  // Регистрация больше не логинит сразу — нужно подтвердить email.
   const register = async (email, password) => {
     const response = await api.post('/auth/register', { email, password })
-    localStorage.setItem('access_token', response.data.access_token)
-    localStorage.setItem('refresh_token', response.data.refresh_token)
-    setUser(response.data.user)
+    return response.data
+  }
+
+  // Подтверждение email по токену из письма — логинит при успехе.
+  const confirmEmail = async (token) => {
+    const response = await api.post('/auth/confirm-email', { token })
+    setSession(response.data)
     return response.data
   }
 
@@ -51,7 +60,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, confirmEmail, logout }}>
       {children}
     </AuthContext.Provider>
   )

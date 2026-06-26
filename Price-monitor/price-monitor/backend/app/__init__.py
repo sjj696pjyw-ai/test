@@ -21,16 +21,24 @@ def _ensure_columns():
     """
     from sqlalchemy import inspect, text
 
-    try:
-        cols = {c['name'] for c in inspect(db.engine).get_columns('competitors')}
-    except Exception:
-        return
-    if 'feed_url' not in cols:
+    inspector = inspect(db.engine)
+
+    def add_column(table, name, ddl):
         try:
-            with db.engine.begin() as conn:
-                conn.execute(text('ALTER TABLE competitors ADD COLUMN feed_url VARCHAR(1000)'))
+            cols = {c['name'] for c in inspector.get_columns(table)}
         except Exception:
-            pass
+            return
+        if name not in cols:
+            try:
+                with db.engine.begin() as conn:
+                    conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {ddl}'))
+            except Exception:
+                pass
+
+    add_column('competitors', 'feed_url', 'feed_url VARCHAR(1000)')
+    # существующих пользователей считаем подтверждёнными (DEFAULT 1), чтобы не
+    # запереть их новым гейтом; новые регистрации ставят False явно через ORM.
+    add_column('users', 'email_confirmed', 'email_confirmed BOOLEAN NOT NULL DEFAULT 1')
 
 def create_app(config_name='default'):
     configure_logging()

@@ -419,8 +419,35 @@ def _card_variants(card, base_name):
     return [(base_name, p)] if p is not None else []
 
 
+def _is_real_href(href):
+    return bool(href) and not href.strip().startswith(("#", "javascript:", "mailto:", "tel:"))
+
+
+def _best_card_link(card):
+    """Ссылка на товар в карточке: любой <a href> (даже с пустым текстом —
+    напр. оверлей-ссылка поверх карточки), кроме кнопок «в корзину» и т.п.
+    Приоритет — ссылкам с «товарными» классами (main-link/title/name/...)."""
+    best = None
+    for a in card.find_all("a", href=True):
+        href = a["href"].strip()
+        if not _is_real_href(href):
+            continue
+        txt = (a.get_text(" ", strip=True) or "").lower()
+        if any(w in txt for w in _NON_NAME_WORDS):
+            continue
+        cls = " ".join(a.get("class") or []).lower()
+        score = 10 if any(k in cls for k in ("main-link", "product", "title", "name", "item-link", "card__link", "card-link")) else 0
+        if best is None or score > best[0]:
+            best = (score, href)
+    return best[1] if best else None
+
+
 def _card_name_and_url(card):
-    """Название карточки = заметная ссылка/заголовок (не цена, не кнопка)."""
+    """Название и ссылка карточки. Имя ищем независимо от ссылки: заметная
+    ссылка-с-текстом или заголовок. URL берём у ссылки названия, иначе —
+    лучшую «товарную» ссылку карточки (важно, когда название в <h3>, а ссылка —
+    отдельный оверлей-<a> с пустым текстом)."""
+    name, name_href = None, None
     best = None
     for a in card.find_all("a"):
         txt = a.get_text(" ", strip=True)
@@ -433,12 +460,18 @@ def _card_name_and_url(card):
         if best is None or score > best[0]:
             best = (score, txt, href)
     if best:
-        return best[1], best[2]
-    for h in card.find_all(["h1", "h2", "h3", "h4"]):
-        txt = h.get_text(" ", strip=True)
-        if txt and not _is_price_text(txt):
-            return txt, None
-    return None, None
+        name, name_href = best[1], best[2]
+    else:
+        for h in card.find_all(["h1", "h2", "h3", "h4"]):
+            txt = h.get_text(" ", strip=True)
+            if txt and not _is_price_text(txt):
+                name = txt
+                break
+
+    if not name:
+        return None, None
+    url = name_href if _is_real_href(name_href) else _best_card_link(card)
+    return name, url
 
 
 def extract_dom(html):

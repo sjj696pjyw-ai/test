@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
+import api from '../utils/api'
 import { Mail, Lock, AlertCircle } from 'lucide-react'
 
 export default function Login() {
@@ -10,6 +11,8 @@ export default function Login() {
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
   const [loggedIn, setLoggedIn] = useState(false)
+  const [unconfirmed, setUnconfirmed] = useState(false)
+  const [resending, setResending] = useState(false)
 
   const { user, login } = useAuth()
   const { success, error: showError } = useToast()
@@ -44,15 +47,31 @@ export default function Login() {
     if (!validate()) return
 
     setLoading(true)
+    setUnconfirmed(false)
 
     try {
       await login(email, password)
       success('Успешный вход в систему')
       setLoggedIn(true)
     } catch (err) {
+      if (err.response?.status === 403 && err.response?.data?.email_unconfirmed) {
+        setUnconfirmed(true)
+      }
       showError(err.response?.data?.error || 'Произошла ошибка при входе')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleResend = async () => {
+    setResending(true)
+    try {
+      await api.post('/auth/resend-confirmation', { email })
+      success('Письмо отправлено повторно. Проверьте почту.')
+    } catch {
+      showError('Не удалось отправить письмо')
+    } finally {
+      setResending(false)
     }
   }
 
@@ -73,6 +92,22 @@ export default function Login() {
         </div>
 
         <form className="card space-y-6" onSubmit={handleSubmit}>
+          {unconfirmed && (
+            <div className="p-3 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+              <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                Email не подтверждён. Перейдите по ссылке из письма или{' '}
+                <button
+                  type="button"
+                  onClick={handleResend}
+                  disabled={resending}
+                  className="font-medium underline hover:no-underline disabled:opacity-50"
+                >
+                  отправить письмо повторно
+                </button>
+                .
+              </p>
+            </div>
+          )}
           <div>
             <label
               htmlFor="email"
