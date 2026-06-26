@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { User, Mail, Calendar, AlertCircle, Lock } from 'lucide-react'
+import { Mail, Calendar, AlertCircle, Lock } from 'lucide-react'
 import { formatDate } from '../utils/export'
 import { useToast } from '../context/ToastContext'
+import Avatar from '../components/Avatar'
 import api from '../utils/api'
 
 export default function Profile() {
@@ -61,9 +62,7 @@ export default function Profile() {
 
       <div className="card">
         <div className="flex items-center space-x-4 mb-6 pb-6 border-b border-gray-200 dark:border-gray-700">
-          <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center">
-            <User className="h-8 w-8 text-primary-600 dark:text-primary-400" />
-          </div>
+          <Avatar size={64} />
           <div>
             <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
               Аккаунт пользователя

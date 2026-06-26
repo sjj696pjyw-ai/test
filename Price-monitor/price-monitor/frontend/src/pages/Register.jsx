@@ -15,7 +15,6 @@ export default function Register() {
 
   const { register } = useAuth()
   const { success: showSuccessToast, error: showErrorToast } = useToast()
-  const navigate = useNavigate()
 
   const validate = () => {
     const newErrors = {}
