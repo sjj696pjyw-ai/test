@@ -86,8 +86,14 @@ html.dark {
          disabled:opacity-50 disabled:cursor-not-allowed;
 }
 
+.btn-navy {
+  @apply bg-primary-900 text-white px-4 py-2 rounded-lg font-medium
+         hover:bg-primary-800 transition-colors duration-200
+         disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
 .btn-secondary {
-  @apply bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-medium 
+  @apply bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-medium
          hover:bg-gray-300 transition-colors duration-200
          disabled:opacity-50 disabled:cursor-not-allowed;
 }

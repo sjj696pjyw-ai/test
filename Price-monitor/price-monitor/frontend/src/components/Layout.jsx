@@ -1,9 +1,8 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
-import { BarChart3, LogOut, Menu, X, Sun, Moon } from 'lucide-react'
+import { BarChart3, LogOut, Menu, X, Sun, Moon, User } from 'lucide-react'
 import { useState } from 'react'
-import Avatar from './Avatar'
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth()
@@ -61,7 +60,7 @@ export default function Layout({ children }) {
                     to="/profile"
                     className="flex items-center space-x-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
                   >
-                    <Avatar size={28} />
+                    <User className="h-5 w-5" />
                     <span className="hidden lg:inline">Профиль</span>
                   </Link>
                   <button

@@ -96,7 +96,7 @@ export default function ResetPassword() {
             <button
               type="submit"
               disabled={loading || !token}
-              className="btn-primary w-full flex items-center justify-center"
+              className="btn-navy w-full flex items-center justify-center"
             >
               {loading ? 'Сохраняем...' : 'Сохранить пароль'}
             </button>

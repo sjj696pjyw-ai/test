@@ -43,7 +43,7 @@ export default function ForgotPassword() {
               Если email есть в системе, мы отправили на него ссылку для сброса пароля. Проверьте
               почту (и папку «Спам»).
             </p>
-            <Link to="/login" className="btn-primary inline-flex items-center justify-center">
+            <Link to="/login" className="btn-navy inline-flex items-center justify-center">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Ко входу
             </Link>
@@ -71,7 +71,7 @@ export default function ForgotPassword() {
             <button
               type="submit"
               disabled={loading}
-              className="btn-primary w-full flex items-center justify-center"
+              className="btn-navy w-full flex items-center justify-center"
             >
               {loading ? 'Отправляем...' : 'Отправить ссылку'}
             </button>

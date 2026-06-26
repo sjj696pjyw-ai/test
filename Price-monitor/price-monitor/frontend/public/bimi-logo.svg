@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg version="1.2" baseProfile="tiny-ps" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>PriceMonitor</title>
+  <rect width="512" height="512" fill="#1e293b"/>
+  <g fill="none" stroke="#60a5fa" stroke-width="28" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M136 136 V376 H376"/>
+    <path d="M203 323 V283"/>
+    <path d="M269 323 V163"/>
+    <path d="M336 323 V216"/>
+  </g>
+</svg>
