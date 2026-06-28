@@ -7,7 +7,7 @@
 from ..models import PriceHistory, Product, db
 
 
-def upsert_competitor_products(competitor_id, products_data, on_existing=None):
+def upsert_competitor_products(competitor_id, products_data, on_existing=None, catalog_id=None):
     """Дедуп товаров по имени, создание новых и обновление существующих.
 
     Для существующего товара: при изменении цены записываем PriceHistory со
@@ -20,15 +20,21 @@ def upsert_competitor_products(competitor_id, products_data, on_existing=None):
         on_existing(product) — необязательный колбэк для каждого существующего
             товара (вызывается до записи истории цены), напр. чтобы зафиксировать
             цены связанных пользовательских товаров.
+        catalog_id — если задан, дедуп и привязка товаров идут в рамках каталога
+            (а не всего конкурента), а новые товары получают этот catalog_id.
 
     Возвращает dict:
         products — список объектов Product (в порядке products_data),
         updated_count, created_count, not_found_count,
         price_changes — список изменений цены.
     """
+    if catalog_id is not None:
+        scope = Product.query.filter_by(catalog_id=catalog_id)
+    else:
+        scope = Product.query.filter_by(competitor_id=competitor_id)
     existing_products = {
         p.name.strip().lower(): p
-        for p in Product.query.filter_by(competitor_id=competitor_id).all()
+        for p in scope.all()
     }
 
     updated_count = 0
@@ -75,6 +81,7 @@ def upsert_competitor_products(competitor_id, products_data, on_existing=None):
         else:
             product = Product(
                 competitor_id=competitor_id,
+                catalog_id=catalog_id,
                 name=name,
                 price=new_price,
                 currency=prod_data.get("currency", "RUB"),

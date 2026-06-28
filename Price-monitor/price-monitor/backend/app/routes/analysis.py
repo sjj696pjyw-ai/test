@@ -2,9 +2,10 @@ import requests
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
-from ..models import Competitor
+from ..models import Catalog, Competitor
 from ..services import (
     AnalysisService,
+    CatalogService,
     CompetitorService,
     PriceUpdateService,
     ProductLinkService,
@@ -118,6 +119,12 @@ def get_analysis(analysis_id):
         comp_dict = comp.to_dict()
         products = ProductService.get_competitor_products(comp.id)
         comp_dict['products'] = [p.to_dict() for p in products]
+        # товары, сгруппированные по каталогам (для связывания и настроек)
+        by_cat = {}
+        for p in products:
+            by_cat.setdefault(p.catalog_id, []).append(p)
+        for cat in comp_dict.get('catalogs', []):
+            cat['products'] = [pp.to_dict() for pp in by_cat.get(cat['id'], [])]
         result['competitors'].append(comp_dict)
 
     result['product_links'] = [link.to_dict() for link in product_links]
@@ -243,6 +250,108 @@ def parse_competitor(competitor_id):
         'message': 'Products parsed successfully',
         'products': [p.to_dict() for p in products]
     }), 200
+
+@analysis_bp.route('/competitor/<int:competitor_id>/catalog', methods=['POST'])
+@jwt_required()
+def add_catalog(competitor_id):
+    """Добавляет новый каталог (раздел или карточку того же сайта) к конкуренту."""
+    competitor = Competitor.query.get(competitor_id)
+    if not competitor:
+        return jsonify({'error': 'Конкурент не найден'}), 404
+
+    current_user_id = get_jwt_identity()
+    analysis = AnalysisService.get_analysis_by_id(competitor.analysis_id, current_user_id)
+    if not analysis:
+        return jsonify({'error': 'Доступ запрещён'}), 403
+
+    data = request.get_json() or {}
+    url = (data.get('url') or '').strip()
+    if not url:
+        return jsonify({'error': 'URL обязателен'}), 400
+
+    result = CatalogService.add_catalog(
+        competitor_id=competitor_id,
+        url=url,
+        title_selector=data.get('title_selector'),
+        price_selector=data.get('price_selector'),
+    )
+
+    err = result.get('error')
+    if err == 'different_site':
+        return jsonify({
+            'error': 'different_site',
+            'message': f"Ссылка ведёт на другой сайт ({result.get('got')}), "
+                       f"а каталог нужно добавлять для {result.get('expected')}.",
+        }), 409
+    if err == 'duplicate':
+        return jsonify({
+            'error': 'duplicate',
+            'message': 'Эти товары уже были добавлены ранее у этого конкурента.',
+        }), 409
+    if err == 'no_products':
+        return jsonify({
+            'error': 'no_products',
+            'message': 'Не удалось найти товары по этой ссылке.',
+        }), 422
+    if err:
+        return jsonify({'error': err}), 400
+
+    return jsonify({
+        'message': 'Каталог добавлен',
+        'catalog': result['catalog'].to_dict(),
+        'products': [p.to_dict() for p in result['products']],
+    }), 201
+
+
+@analysis_bp.route('/catalog/<int:catalog_id>', methods=['PUT'])
+@jwt_required()
+def update_catalog(catalog_id):
+    """Обновляет селекторы/URL конкретного каталога."""
+    data = request.get_json() or {}
+    catalog = CatalogService.update_selectors(
+        catalog_id,
+        data.get('title_selector'),
+        data.get('price_selector'),
+        data.get('url'),
+    )
+    if not catalog:
+        return jsonify({'error': 'Каталог не найден'}), 404
+    return jsonify({'message': 'Каталог обновлён', 'catalog': catalog.to_dict()}), 200
+
+
+@analysis_bp.route('/catalog/<int:catalog_id>', methods=['DELETE'])
+@jwt_required()
+def delete_catalog(catalog_id):
+    res = CatalogService.delete_catalog(catalog_id)
+    if res is None:
+        return jsonify({'error': 'Каталог не найден'}), 404
+    if res == 'last':
+        return jsonify({'error': 'last_catalog',
+                        'message': 'Нельзя удалить единственный каталог конкурента.'}), 409
+    return jsonify({'message': 'Каталог удалён'}), 200
+
+
+@analysis_bp.route('/catalog/<int:catalog_id>/parse', methods=['POST'])
+@jwt_required()
+def parse_catalog(catalog_id):
+    """Пересобрать товары конкретного каталога по его селекторам/URL."""
+    catalog = Catalog.query.get(catalog_id)
+    if not catalog:
+        return jsonify({'error': 'Каталог не найден'}), 404
+
+    data = request.get_json() or {}
+    url = data.get('url') or catalog.url
+    products = SiteParsingService.parse_catalog_site(
+        catalog_id=catalog_id,
+        url=url,
+        title_selector=data.get('title_selector'),
+        price_selector=data.get('price_selector'),
+    )
+    return jsonify({
+        'message': 'Готово',
+        'products': [p.to_dict() for p in products],
+    }), 200
+
 
 @analysis_bp.route('/preview-products', methods=['POST'])
 @jwt_required()

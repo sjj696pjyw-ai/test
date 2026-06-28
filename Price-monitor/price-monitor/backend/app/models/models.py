@@ -75,6 +75,7 @@ class Competitor(db.Model):
     feed_url = db.Column(db.String(1000))
 
     products = db.relationship('Product', backref='competitor', lazy='dynamic', cascade='all, delete-orphan')
+    catalogs = db.relationship('Catalog', backref='competitor', lazy='dynamic', cascade='all, delete-orphan')
 
     def to_dict(self):
         return {
@@ -87,14 +88,53 @@ class Competitor(db.Model):
             'price_selector': self.price_selector,
             'last_price_update': self.last_price_update.isoformat() if self.last_price_update else None,
             'update_status': self.update_status,
-            'update_error_message': self.update_error_message
+            'update_error_message': self.update_error_message,
+            'catalogs': [c.to_dict() for c in self.catalogs.all()]
         }
+
+
+class Catalog(db.Model):
+    """Каталог (источник товаров) в рамках одного конкурента. У конкурента может
+    быть несколько каталогов — разные разделы или отдельные карточки одного сайта.
+    URL и селекторы хранятся на каталоге; товары привязаны к каталогу."""
+    __tablename__ = 'catalogs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    competitor_id = db.Column(db.Integer, db.ForeignKey('competitors.id'), nullable=False)
+    url = db.Column(db.String(1000))
+    name = db.Column(db.String(255))  # человекочитаемая метка (путь каталога)
+    title_selector = db.Column(db.String(255))
+    price_selector = db.Column(db.String(255))
+    # Кэш YML/price-фида: NULL — не проверяли, '' — фида нет, иначе URL фида.
+    feed_url = db.Column(db.String(1000))
+    last_price_update = db.Column(db.DateTime)
+    update_status = db.Column(db.String(50), default='pending')
+    update_error_message = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    products = db.relationship('Product', backref='catalog', lazy='dynamic')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'competitor_id': self.competitor_id,
+            'url': self.url,
+            'name': self.name,
+            'title_selector': self.title_selector,
+            'price_selector': self.price_selector,
+            'last_price_update': self.last_price_update.isoformat() if self.last_price_update else None,
+            'update_status': self.update_status,
+            'update_error_message': self.update_error_message,
+            'products_count': self.products.count(),
+        }
+
 
 class Product(db.Model):
     __tablename__ = 'products'
 
     id = db.Column(db.Integer, primary_key=True)
     competitor_id = db.Column(db.Integer, db.ForeignKey('competitors.id'), nullable=False)
+    catalog_id = db.Column(db.Integer, db.ForeignKey('catalogs.id'), nullable=True)
     name = db.Column(db.String(500), nullable=False)
     price = db.Column(db.Float)
     currency = db.Column(db.String(10), default='RUB')
@@ -109,7 +149,8 @@ class Product(db.Model):
             'price': self.price,
             'currency': self.currency,
             'external_id': self.external_id,
-            'url': self.url
+            'url': self.url,
+            'catalog_id': self.catalog_id
         }
 
 class PriceHistory(db.Model):

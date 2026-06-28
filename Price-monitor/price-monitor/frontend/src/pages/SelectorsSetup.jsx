@@ -37,6 +37,8 @@ export default function SelectorsSetup() {
   const [preview, setPreview] = useState(null)
   const [saving, setSaving] = useState(false)
   const [showManual, setShowManual] = useState(false)
+  const [catalogs, setCatalogs] = useState([])
+  const [selectedCatalogId, setSelectedCatalogId] = useState(null)
 
   const normalizedUrl = () => (url.startsWith('http') ? url : `https://${url}`)
 
@@ -67,7 +69,11 @@ export default function SelectorsSetup() {
     setSaving(true)
     setError('')
     try {
-      await api.post(`/analysis/competitor/${competitorId}/parse`, { url: normalizedUrl() })
+      if (selectedCatalogId) {
+        await api.post(`/analysis/catalog/${selectedCatalogId}/parse`, { url: normalizedUrl() })
+      } else {
+        await api.post(`/analysis/competitor/${competitorId}/parse`, { url: normalizedUrl() })
+      }
       navigate(`/analysis/${id}`)
     } catch (err) {
       setError(err.response?.data?.error || 'Ошибка сохранения товаров')
@@ -83,9 +89,20 @@ export default function SelectorsSetup() {
         const comp = response.data.competitor
         setCompetitor(comp)
 
-        if (comp.domain) setUrl(comp.domain)
-        if (comp.title_selector) setNameSelector(comp.title_selector)
-        if (comp.price_selector) setPriceSelector(comp.price_selector)
+        const cats = comp.catalogs || []
+        setCatalogs(cats)
+        // по умолчанию настраиваем основной (первый) каталог
+        const primary = cats[0]
+        if (primary) {
+          setSelectedCatalogId(primary.id)
+          setUrl(primary.url || comp.domain || '')
+          if (primary.title_selector) setNameSelector(primary.title_selector)
+          if (primary.price_selector) setPriceSelector(primary.price_selector)
+        } else {
+          if (comp.domain) setUrl(comp.domain)
+          if (comp.title_selector) setNameSelector(comp.title_selector)
+          if (comp.price_selector) setPriceSelector(comp.price_selector)
+        }
       } catch (err) {
         setError(err.response?.data?.error || 'Ошибка загрузки данных конкурента')
       } finally {
@@ -131,11 +148,16 @@ export default function SelectorsSetup() {
     setLoading(true)
 
     try {
-      await api.post(`/analysis/competitor/${competitorId}/parse`, {
+      const payload = {
         url: url.startsWith('http') ? url : `https://${url}`,
         title_selector: nameSelector,
         price_selector: priceSelector,
-      })
+      }
+      if (selectedCatalogId) {
+        await api.post(`/analysis/catalog/${selectedCatalogId}/parse`, payload)
+      } else {
+        await api.post(`/analysis/competitor/${competitorId}/parse`, payload)
+      }
       navigate(`/analysis/${id}`)
     } catch (err) {
       setError(err.response?.data?.error || 'Ошибка парсинга')
@@ -184,6 +206,38 @@ export default function SelectorsSetup() {
         )}
 
         <div className="space-y-6">
+          {catalogs.length > 1 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Каталог
+              </label>
+              <select
+                value={selectedCatalogId ?? ''}
+                onChange={(e) => {
+                  const cid = Number(e.target.value)
+                  const cat = catalogs.find((c) => c.id === cid)
+                  setSelectedCatalogId(cid)
+                  setUrl(cat?.url || '')
+                  setNameSelector(cat?.title_selector || '')
+                  setPriceSelector(cat?.price_selector || '')
+                  setPreview(null)
+                  setVerificationResult(null)
+                  setError('')
+                }}
+                className="input-field"
+              >
+                {catalogs.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name || c.url} ({c.products_count}{' '}
+                    {c.products_count === 1 ? 'товар' : 'товаров'})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Выберите каталог, для которого настраиваете селекторы.
+              </p>
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               URL страницы с товарами

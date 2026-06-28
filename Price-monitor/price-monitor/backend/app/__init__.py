@@ -39,6 +39,57 @@ def _ensure_columns():
     # существующих пользователей считаем подтверждёнными (DEFAULT 1), чтобы не
     # запереть их новым гейтом; новые регистрации ставят False явно через ORM.
     add_column('users', 'email_confirmed', 'email_confirmed BOOLEAN NOT NULL DEFAULT 1')
+    # Каталоги: товар теперь принадлежит каталогу. Таблицу catalogs создаёт
+    # db.create_all(); здесь добавляем колонку и заполняем дефолтные каталоги.
+    add_column('products', 'catalog_id', 'catalog_id INTEGER')
+    _backfill_catalogs()
+
+
+def _backfill_catalogs():
+    """Идемпотентно: каждому конкуренту без каталогов создаём дефолтный каталог
+    из его domain/селекторов и привязываем к нему все его товары (catalog_id)."""
+    from .models import Catalog, Competitor, Product
+
+    try:
+        competitors = Competitor.query.all()
+    except Exception:
+        return
+
+    changed = False
+    for c in competitors:
+        if Catalog.query.filter_by(competitor_id=c.id).first():
+            continue
+        catalog = Catalog(
+            competitor_id=c.id,
+            url=c.domain,
+            name=_catalog_label(c.domain),
+            title_selector=c.title_selector,
+            price_selector=c.price_selector,
+            feed_url=c.feed_url,
+            last_price_update=c.last_price_update,
+            update_status=c.update_status or 'pending',
+            update_error_message=c.update_error_message,
+        )
+        db.session.add(catalog)
+        db.session.flush()  # получить catalog.id
+        Product.query.filter_by(competitor_id=c.id).update(
+            {Product.catalog_id: catalog.id}, synchronize_session=False
+        )
+        changed = True
+    if changed:
+        db.session.commit()
+
+
+def _catalog_label(url):
+    """Короткая метка каталога из URL (последний значимый сегмент пути)."""
+    from urllib.parse import urlparse
+    if not url:
+        return 'Каталог'
+    u = url if url.startswith(('http://', 'https://')) else f'https://{url}'
+    path = urlparse(u).path.strip('/')
+    if not path:
+        return 'Главный каталог'
+    return path.split('/')[-1] or path
 
 def create_app(config_name='default'):
     configure_logging()

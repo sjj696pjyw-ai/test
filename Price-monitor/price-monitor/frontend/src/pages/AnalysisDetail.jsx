@@ -16,12 +16,16 @@ import {
   ExternalLink,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   HelpCircle,
   Store,
+  Plus,
 } from 'lucide-react'
 import { getRegionName } from '../utils/regions'
 import { exportToExcel, exportToCSV, formatPrice, formatDate } from '../utils/export'
 import { PriceDynamicsChart } from '../components/PriceDynamicsChart'
+import AddCatalogModal from '../components/AddCatalogModal'
 import { useToast } from '../context/ToastContext'
 
 const productPlural = (n) => {
@@ -33,6 +37,31 @@ const productPlural = (n) => {
 }
 
 const cleanUrl = (u) => (u || '').replace(/^https?:\/\//, '').replace(/\/+$/, '')
+
+// Частые двухуровневые публичные суффиксы (site.msk.ru, shop.co.uk).
+const MULTI_SUFFIXES = new Set([
+  'msk.ru', 'spb.ru', 'com.ru', 'net.ru', 'org.ru', 'edu.ru', 'gov.ru',
+  'co.uk', 'org.uk', 'com.ua', 'co.il', 'com.br', 'com.tr', 'com.kz',
+  'com.by', 'co.kz',
+])
+
+// Основной (регистрируемый) домен: novosibirsk.rus-buket.ru → rus-buket.ru.
+const baseDomain = (urlOrHost) => {
+  let h = (urlOrHost || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .split('/')[0]
+    .replace(/^\.+|\.+$/g, '')
+  if (!h) return ''
+  const p = h.split('.')
+  if (p.length <= 2) return h
+  const last2 = p.slice(-2).join('.')
+  return MULTI_SUFFIXES.has(last2) ? p.slice(-3).join('.') : last2
+}
+
+const withScheme = (u) => (!u ? null : /^https?:\/\//.test(u) ? u : `https://${u}`)
 
 // Название товара: ссылка на карточку, если url есть, иначе обычный текст.
 const ProductName = ({ name, url, className = '' }) => {
@@ -141,16 +170,16 @@ export default function AnalysisDetail() {
   const [isUpdatingPrices, setIsUpdatingPrices] = useState(false)
   const [priceDynamicsData, setPriceDynamicsData] = useState(null)
   const [userProductsPage, setUserProductsPage] = useState(0)
-  const [competitorProductsPages, setCompetitorProductsPages] = useState({})
   const [showHowItWorksModal, setShowHowItWorksModal] = useState(false)
   const { error: showError, success } = useToast()
   const isDemo = location.state?.demo === true
   const USER_PRODUCTS_PER_PAGE = 5
-  const COMPETITOR_PRODUCTS_PER_PAGE = 5
   const [userProductSearch, setUserProductSearch] = useState('')
   const [competitorProductSearch, setCompetitorProductSearch] = useState({})
 
   const [reportProductFilter, setReportProductFilter] = useState(null)
+  const [addCatalogTarget, setAddCatalogTarget] = useState(null)
+  const [expandedCatalogs, setExpandedCatalogs] = useState({})
 
   useEffect(() => {
     fetchAnalysis()
@@ -451,41 +480,10 @@ export default function AnalysisDetail() {
     }
   }
 
-  const getCompetitorProductsPage = (competitorId) => {
-    const competitor = competitorList.find((c) => c.id === competitorId)
-    let products = competitor?.products || []
-
-    if (competitorProductSearch[competitorId]?.trim()) {
-      products = products.filter((p) =>
-        p.name.toLowerCase().includes(competitorProductSearch[competitorId].toLowerCase())
-      )
-    }
-    const currentPage = competitorProductsPages[competitorId] || 0
-    const totalPages = Math.ceil(products.length / COMPETITOR_PRODUCTS_PER_PAGE)
-    const safePage = Math.min(currentPage, Math.max(0, totalPages - 1))
-    const start = safePage * COMPETITOR_PRODUCTS_PER_PAGE
-    const end = start + COMPETITOR_PRODUCTS_PER_PAGE
-    return {
-      products: products.slice(start, end),
-      currentPage: safePage,
-      totalPages,
-    }
-  }
-
   const handleUserProductPageChange = (newPage) => {
     const products = userCompetitor?.products || []
     const totalPages = Math.ceil(products.length / USER_PRODUCTS_PER_PAGE)
     setUserProductsPage(Math.max(0, Math.min(newPage, totalPages - 1)))
-  }
-
-  const handleCompetitorProductPageChange = (competitorId, newPage) => {
-    const competitor = competitorList.find((c) => c.id === competitorId)
-    const products = competitor?.products || []
-    const totalPages = Math.ceil(products.length / COMPETITOR_PRODUCTS_PER_PAGE)
-    setCompetitorProductsPages((prev) => ({
-      ...prev,
-      [competitorId]: Math.max(0, Math.min(newPage, totalPages - 1)),
-    }))
   }
 
   if (!analysis) {
@@ -519,6 +517,93 @@ export default function AnalysisDetail() {
           currency: 'RUB',
           maximumFractionDigits: 0,
         }).format(price)
+
+  // Список товаров конкурента/моего сайта, сгруппированный по каталогам:
+  // каждый каталог — разворачиваемая сущность с кликабельным названием-ссылкой.
+  const renderCatalogGroups = (entity, priceClass) => {
+    const groups =
+      entity.catalogs && entity.catalogs.length
+        ? entity.catalogs
+        : [{ id: 'all', name: null, url: entity.domain, products: entity.products || [] }]
+    return (
+      <div className="space-y-2">
+        {groups.map((cat) => {
+          const items = cat.products || []
+          const key = `disp:${entity.id}:${cat.id}`
+          const open = expandedCatalogs[key] ?? groups.length === 1
+          const toggle = () => setExpandedCatalogs((prev) => ({ ...prev, [key]: !open }))
+          const catUrl = withScheme(cat.url)
+          const label = cat.name || cleanUrl(cat.url) || 'Каталог'
+          return (
+            <div
+              key={cat.id}
+              className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
+            >
+              <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/60">
+                <div className="flex items-center gap-2 min-w-0">
+                  <button
+                    onClick={toggle}
+                    className="p-0.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 shrink-0"
+                    aria-label={open ? 'Свернуть' : 'Развернуть'}
+                  >
+                    {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
+                  {catUrl ? (
+                    <a
+                      href={catUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 hover:underline truncate inline-flex items-center gap-1"
+                      title={label}
+                    >
+                      <span className="truncate">{label}</span>
+                      <ExternalLink className="h-3 w-3 shrink-0" />
+                    </a>
+                  ) : (
+                    <button
+                      onClick={toggle}
+                      className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate"
+                    >
+                      {label}
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={toggle}
+                  className="text-xs text-gray-500 dark:text-gray-400 shrink-0 ml-3"
+                >
+                  {items.length} {productPlural(items.length)}
+                </button>
+              </div>
+              {open && (
+                <div className="space-y-2 p-2 max-h-96 overflow-y-auto">
+                  {items.length === 0 ? (
+                    <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-3">
+                      Нет товаров
+                    </p>
+                  ) : (
+                    items.map((product) => (
+                      <div
+                        key={product.id}
+                        className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border-b border-gray-200 dark:border-gray-700"
+                      >
+                        <p className="font-medium text-gray-900 dark:text-gray-100">
+                          <ProductName name={product.name} url={product.url} />
+                        </p>
+                        <div className="flex items-center space-x-4 mt-1">
+                          <p className={priceClass}>{formatPrice(product.price)}</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
 
   const reportLinks = analysis.product_links || []
 
@@ -609,35 +694,6 @@ export default function AnalysisDetail() {
               (UTC) • Регион: {getRegionName(analysis.region)}
             </p>
 
-            {!isDemo &&
-              (userCompetitor?.products?.length > 0 ||
-                competitorList.some((c) => c.products?.length > 0)) && (
-                <div className="mt-2 flex items-center space-x-3">
-                  <button
-                    onClick={() => handleUpdatePrices()}
-                    disabled={isUpdatingPrices}
-                    className="btn-primary text-sm flex items-center space-x-2"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${isUpdatingPrices ? 'animate-spin' : ''}`} />
-                    <span>Обновить цены</span>
-                  </button>
-                  {userCompetitor?.last_price_update && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Цены актуальны на{' '}
-                      {new Date(userCompetitor.last_price_update).toLocaleDateString('ru-RU', {
-                        day: 'numeric',
-                        month: 'long',
-                        year: 'numeric',
-                      })}{' '}
-                      {new Date(userCompetitor.last_price_update).toLocaleTimeString('ru-RU', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}{' '}
-                      (UTC)
-                    </p>
-                  )}
-                </div>
-              )}
           </div>
           <div className="flex items-center space-x-2">
             <button
@@ -909,14 +965,14 @@ export default function AnalysisDetail() {
                     <Store className="h-4 w-4" />
                   </span>
                   <div>
-                    {userCompetitor.domain || analysis.user_site ? (
+                    {baseDomain(userCompetitor.domain || analysis.user_site) ? (
                       <a
-                        href={`https://${(userCompetitor.domain || analysis.user_site).replace(/^https?:\/\//, '')}`}
+                        href={`https://${baseDomain(userCompetitor.domain || analysis.user_site)}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 hover:underline"
                       >
-                        {cleanUrl(userCompetitor.domain || analysis.user_site)}
+                        {baseDomain(userCompetitor.domain || analysis.user_site)}
                       </a>
                     ) : (
                       <span className="font-medium text-gray-900 dark:text-white">Ваш сайт</span>
@@ -943,6 +999,15 @@ export default function AnalysisDetail() {
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
+                  {!isDemo && (
+                    <button
+                      onClick={() => setAddCatalogTarget(userCompetitor)}
+                      className="btn-secondary text-sm flex items-center space-x-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span>Добавить товары</span>
+                    </button>
+                  )}
                   {userCompetitor.products?.length > 0 &&
                     (isDemo ? (
                       <button
@@ -974,21 +1039,10 @@ export default function AnalysisDetail() {
                 </div>
               </div>
               {userCompetitor.products?.length > 0 ? (
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {userCompetitor.products.map((product) => (
-                    <div
-                      key={product.id}
-                      className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border-b border-gray-200 dark:border-gray-700"
-                    >
-                      <p className="font-medium text-gray-900 dark:text-gray-100"><ProductName name={product.name} url={product.url} /></p>
-                      <div className="flex items-center space-x-4 mt-1">
-                        <p className="text-primary-600 dark:text-primary-400 font-semibold">
-                          {formatPrice(product.price)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                renderCatalogGroups(
+                  userCompetitor,
+                  'text-primary-600 dark:text-primary-400 font-semibold'
+                )
               ) : (
                 <div className="space-y-4">
                   <p className="text-gray-500 dark:text-gray-400">Нет товаров</p>
@@ -1193,15 +1247,19 @@ export default function AnalysisDetail() {
                                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
                               />
                             </div>
-                            <div className="space-y-1">
-                              {getCompetitorProductsPage(competitor.id).products.length === 0 && (
-                                <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
-                                  {competitorProductSearch[competitor.id]?.trim()
-                                    ? 'Товары не найдены'
-                                    : 'Нет товаров'}
-                                </p>
-                              )}
-                              {getCompetitorProductsPage(competitor.id).products.map((product) => {
+                            {(() => {
+                              const q = (
+                                competitorProductSearch[competitor.id] || ''
+                              ).toLowerCase()
+                              const groups =
+                                competitor.catalogs && competitor.catalogs.length
+                                  ? competitor.catalogs
+                                  : [{ id: 'all', name: null, products: competitor.products || [] }]
+                              const multi = groups.length > 1
+                              const anyMatch = groups.some((g) =>
+                                (g.products || []).some((p) => p.name.toLowerCase().includes(q))
+                              )
+                              const renderItem = (product) => {
                                 const isLinked = linkedCompetitorProductIds.has(product.id)
                                 const isSelected =
                                   selectedCompetitorProducts[competitor.id] === product.id
@@ -1237,46 +1295,71 @@ export default function AnalysisDetail() {
                                     </span>
                                   </button>
                                 )
-                              })}
-                            </div>
-                            {getCompetitorProductsPage(competitor.id).totalPages > 1 && (
-                              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                                <span className="text-xs text-gray-600 dark:text-gray-400">
-                                  Страница{' '}
-                                  {getCompetitorProductsPage(competitor.id).currentPage + 1} из{' '}
-                                  {getCompetitorProductsPage(competitor.id).totalPages}
-                                </span>
-                                <button
-                                  onClick={() =>
-                                    handleCompetitorProductPageChange(
-                                      competitor.id,
-                                      getCompetitorProductsPage(competitor.id).currentPage - 1
+                              }
+                              return (
+                                <div className="space-y-2">
+                                  {!anyMatch && (
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                                      {q ? 'Товары не найдены' : 'Нет товаров'}
+                                    </p>
+                                  )}
+                                  {groups.map((cat) => {
+                                    const items = (cat.products || []).filter((p) =>
+                                      p.name.toLowerCase().includes(q)
                                     )
-                                  }
-                                  disabled={
-                                    getCompetitorProductsPage(competitor.id).currentPage === 0
-                                  }
-                                  className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  <ChevronLeft className="h-4 w-4" />
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    handleCompetitorProductPageChange(
-                                      competitor.id,
-                                      getCompetitorProductsPage(competitor.id).currentPage + 1
+                                    if (q && items.length === 0) return null
+                                    const key = `${competitor.id}:${cat.id}`
+                                    const open = expandedCatalogs[key] ?? (!multi || !!q)
+                                    if (!multi) {
+                                      return (
+                                        <div key={cat.id} className="space-y-1">
+                                          {items.map(renderItem)}
+                                        </div>
+                                      )
+                                    }
+                                    return (
+                                      <div
+                                        key={cat.id}
+                                        className="border border-gray-200 dark:border-gray-700 rounded-md"
+                                      >
+                                        <button
+                                          onClick={() =>
+                                            setExpandedCatalogs((prev) => ({
+                                              ...prev,
+                                              [key]: !open,
+                                            }))
+                                          }
+                                          className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-md"
+                                        >
+                                          <span className="text-sm font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                                            {open ? (
+                                              <ChevronUp className="h-4 w-4" />
+                                            ) : (
+                                              <ChevronDown className="h-4 w-4" />
+                                            )}
+                                            {cat.name || 'Каталог'}
+                                          </span>
+                                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                                            {items.length} {productPlural(items.length)}
+                                          </span>
+                                        </button>
+                                        {open && (
+                                          <div className="space-y-1 p-2 pt-0">
+                                            {items.length === 0 ? (
+                                              <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-2">
+                                                Нет товаров
+                                              </p>
+                                            ) : (
+                                              items.map(renderItem)
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
                                     )
-                                  }
-                                  disabled={
-                                    getCompetitorProductsPage(competitor.id).currentPage >=
-                                    getCompetitorProductsPage(competitor.id).totalPages - 1
-                                  }
-                                  className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  <ChevronRight className="h-4 w-4" />
-                                </button>
-                              </div>
-                            )}
+                                  })}
+                                </div>
+                              )
+                            })()}
                           </div>
                         )
                     )}
@@ -1392,12 +1475,12 @@ export default function AnalysisDetail() {
                     </span>
                     <div>
                       <a
-                        href={`https://${comp.domain.replace(/^https?:\/\//, '')}`}
+                        href={`https://${baseDomain(comp.domain)}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 hover:underline"
                       >
-                        {cleanUrl(comp.domain)}
+                        {baseDomain(comp.domain)}
                       </a>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
                         {comp.products?.length || 0} {productPlural(comp.products?.length || 0)}
@@ -1421,6 +1504,15 @@ export default function AnalysisDetail() {
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
+                    {!isDemo && (
+                      <button
+                        onClick={() => setAddCatalogTarget(comp)}
+                        className="btn-secondary text-sm flex items-center space-x-2"
+                      >
+                        <Plus className="h-4 w-4" />
+                        <span>Добавить товары</span>
+                      </button>
+                    )}
                     {isDemo ? (
                       <button
                         onClick={() => showError('Настройка селекторов недоступна в демо-режиме')}
@@ -1453,23 +1545,7 @@ export default function AnalysisDetail() {
                   </div>
                 </div>
                 {comp.products?.length > 0 ? (
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {comp.products.map((product) => (
-                      <div
-                        key={product.id}
-                        className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border-b border-gray-200 dark:border-gray-700"
-                      >
-                        <p className="font-medium text-gray-900 dark:text-gray-100">
-                          <ProductName name={product.name} url={product.url} />
-                        </p>
-                        <div className="flex items-center space-x-4 mt-1">
-                          <p className="text-gray-600 dark:text-gray-400">
-                            {formatPrice(product.price)}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  renderCatalogGroups(comp, 'text-gray-600 dark:text-gray-400')
                 ) : (
                   <div className="text-center py-8">
                     <p className="text-gray-500 dark:text-gray-400">
@@ -1485,6 +1561,14 @@ export default function AnalysisDetail() {
             </div>
           )}
         </div>
+      )}
+
+      {addCatalogTarget && (
+        <AddCatalogModal
+          competitor={addCatalogTarget}
+          onClose={() => setAddCatalogTarget(null)}
+          onAdded={() => fetchAnalysis()}
+        />
       )}
 
       {showHowItWorksModal && (

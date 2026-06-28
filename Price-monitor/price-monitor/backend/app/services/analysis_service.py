@@ -2,8 +2,8 @@ import logging
 import time
 from datetime import datetime
 
-from ..models import Analysis, Competitor, Product, ProductLink, db
-from ..utils import SiteParser
+from ..models import Analysis, Catalog, Competitor, Product, ProductLink, db
+from ..utils import SiteParser, same_site
 from .product_upsert import upsert_competitor_products
 
 logger = logging.getLogger(__name__)
@@ -117,10 +117,152 @@ class CompetitorService:
             return True
         return False
 
+def _catalog_label(url):
+    """Короткая метка каталога из URL (последний значимый сегмент пути)."""
+    from urllib.parse import urlparse
+    if not url:
+        return 'Каталог'
+    u = url if url.startswith(('http://', 'https://')) else f'https://{url}'
+    path = urlparse(u).path.strip('/')
+    if not path:
+        return 'Главный каталог'
+    return path.split('/')[-1] or path
+
+
+class CatalogService:
+    @staticmethod
+    def get_catalogs(competitor_id):
+        return Catalog.query.filter_by(competitor_id=competitor_id).order_by(Catalog.id.asc()).all()
+
+    @staticmethod
+    def update_selectors(catalog_id, title_selector, price_selector, url=None):
+        catalog = Catalog.query.get(catalog_id)
+        if not catalog:
+            return None
+        catalog.title_selector = title_selector
+        catalog.price_selector = price_selector
+        if url:
+            catalog.url = url
+        db.session.commit()
+        return catalog
+
+    @staticmethod
+    def ensure_primary_catalog(competitor, url=None):
+        """Возвращает основной (первый) каталог конкурента, создавая его при
+        отсутствии — из domain/селекторов конкурента. Flush, но без commit."""
+        cat = (Catalog.query.filter_by(competitor_id=competitor.id)
+               .order_by(Catalog.id.asc()).first())
+        if cat:
+            return cat
+        src = url or competitor.domain
+        cat = Catalog(
+            competitor_id=competitor.id,
+            url=src,
+            name=_catalog_label(src),
+            title_selector=competitor.title_selector,
+            price_selector=competitor.price_selector,
+            feed_url=competitor.feed_url,
+            last_price_update=competitor.last_price_update,
+            update_status=competitor.update_status or 'pending',
+        )
+        db.session.add(cat)
+        db.session.flush()
+        return cat
+
+    @staticmethod
+    def delete_catalog(catalog_id):
+        catalog = Catalog.query.get(catalog_id)
+        if not catalog:
+            return None
+        competitor = Competitor.query.get(catalog.competitor_id)
+        # последний каталог конкурента удалять нельзя — иначе товары осиротеют
+        if competitor and competitor.catalogs.count() <= 1:
+            return 'last'
+        # товары каталога удаляем вместе с ним
+        Product.query.filter_by(catalog_id=catalog_id).delete(synchronize_session=False)
+        db.session.delete(catalog)
+        db.session.commit()
+        return True
+
+    @staticmethod
+    def add_catalog(competitor_id, url, title_selector=None, price_selector=None):
+        """Добавляет новый каталог к существующему конкуренту.
+
+        Возвращает dict со статусом:
+          {'ok': True, 'catalog': Catalog, 'products': [...]}             — успех
+          {'error': 'not_found'}                                          — нет конкурента
+          {'error': 'different_site', 'expected': host, 'got': host}      — другой сайт
+          {'error': 'no_products'}                                        — ничего не нашли
+          {'error': 'duplicate'}                                          — товары уже есть
+        """
+        competitor = Competitor.query.get(competitor_id)
+        if not competitor:
+            return {'error': 'not_found'}
+
+        normalized = url if url.startswith(('http://', 'https://')) else f'https://{url}'
+
+        # 1) проверка того же сайта
+        if not same_site(competitor.domain, normalized):
+            from ..utils import host_of
+            return {
+                'error': 'different_site',
+                'expected': host_of(competitor.domain),
+                'got': host_of(normalized),
+            }
+
+        # 2) сбор товаров
+        parser = SiteParser()
+        try:
+            products, method, feed_cache = parser.collect_products(
+                normalized, title_selector, price_selector
+            )
+        except Exception as e:
+            logger.error(f"[КАТАЛОГ] ошибка сбора {normalized}: {e}")
+            return {'error': 'no_products'}
+        finally:
+            parser.close()
+
+        if not products:
+            return {'error': 'no_products'}
+
+        # 3) дедуп: если ВСЕ найденные товары уже есть у конкурента по названию
+        #    (цену не сравниваем — она могла измениться с прошлого сбора)
+        existing = {
+            p.name.strip().lower()
+            for p in Product.query.filter_by(competitor_id=competitor_id).all()
+        }
+        found = {p['name'].strip().lower() for p in products}
+        if found and found.issubset(existing):
+            return {'error': 'duplicate'}
+
+        # 4) создаём каталог и товары под ним
+        catalog = Catalog(
+            competitor_id=competitor_id,
+            url=normalized,
+            name=_catalog_label(normalized),
+            title_selector=title_selector or None,
+            price_selector=price_selector or None,
+            feed_url=feed_cache if feed_cache is not None else None,
+            last_price_update=datetime.utcnow(),
+            update_status='success',
+        )
+        db.session.add(catalog)
+        db.session.flush()  # нужен catalog.id
+
+        result = upsert_competitor_products(competitor_id, products, catalog_id=catalog.id)
+        db.session.commit()
+
+        return {'ok': True, 'catalog': catalog, 'products': result['products']}
+
+
 class ProductService:
     @staticmethod
     def get_competitor_products(competitor_id):
         return Product.query.filter_by(competitor_id=competitor_id).all()
+
+    @staticmethod
+    def get_catalog_products(catalog_id):
+        return Product.query.filter_by(catalog_id=catalog_id).all()
 
 class ProductLinkService:
     @staticmethod
@@ -216,6 +358,7 @@ class SiteParsingService:
                 db.session.commit()
             return []
 
+        catalog = None
         if competitor:
             # селекторы сохраняем только если заданы — авто-извлечению они не нужны
             if title_selector:
@@ -229,10 +372,64 @@ class SiteParsingService:
             competitor.last_price_update = datetime.utcnow()
             competitor.update_status = 'success'
 
-        result = upsert_competitor_products(competitor_id, products)
+            # основной каталог конкурента — товары привязываем к нему
+            catalog = CatalogService.ensure_primary_catalog(competitor, url=url)
+            if title_selector:
+                catalog.title_selector = title_selector
+            if price_selector:
+                catalog.price_selector = price_selector
+            if url:
+                catalog.url = url
+            if feed_cache is not None:
+                catalog.feed_url = feed_cache
+            catalog.last_price_update = datetime.utcnow()
+            catalog.update_status = 'success'
+
+        result = upsert_competitor_products(
+            competitor_id, products,
+            catalog_id=(catalog.id if catalog else None),
+        )
 
         db.session.commit()
 
+        return result['products']
+
+    @staticmethod
+    def parse_catalog_site(catalog_id, url, title_selector, price_selector):
+        """Пересобирает товары конкретного каталога (URL+селекторы каталога)."""
+        catalog = Catalog.query.get(catalog_id)
+        if not catalog:
+            return []
+
+        parser = SiteParser()
+        products, method, feed_cache = parser.collect_products(
+            url, title_selector, price_selector, feed_url=catalog.feed_url
+        )
+        parser.close()
+        logger.info(f"[КАТАЛОГ {catalog_id}] собрано {len(products) if products else 0} "
+                    f"(способ: {method or 'нет'})")
+
+        if not products:
+            if feed_cache is not None:
+                catalog.feed_url = feed_cache
+                db.session.commit()
+            return []
+
+        if title_selector:
+            catalog.title_selector = title_selector
+        if price_selector:
+            catalog.price_selector = price_selector
+        if url:
+            catalog.url = url
+        if feed_cache is not None:
+            catalog.feed_url = feed_cache
+        catalog.last_price_update = datetime.utcnow()
+        catalog.update_status = 'success'
+
+        result = upsert_competitor_products(
+            catalog.competitor_id, products, catalog_id=catalog.id
+        )
+        db.session.commit()
         return result['products']
 
     @staticmethod

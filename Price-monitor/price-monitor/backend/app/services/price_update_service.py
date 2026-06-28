@@ -30,17 +30,20 @@ class PriceUpdateService:
     @staticmethod
     def _collect_products_parallel(competitors, respect_rate_limit=True):
         """
-        ПАРАЛЛЕЛЬНО собирает товары конкурентов (полный сбор: пагинация/прокрутка),
-        только сеть/скрейпинг — БЕЗ обращения к БД, безопасно для потоков.
-        Возвращает {competitor_id: products|None}. Запись в БД делается отдельно,
-        последовательно (SQLite — один писатель).
+        ПАРАЛЛЕЛЬНО собирает товары по КАТАЛОГАМ конкурентов (полный сбор:
+        пагинация/прокрутка), только сеть/скрейпинг — БЕЗ обращения к БД,
+        безопасно для потоков. Возвращает {catalog_id: products|None}.
+        Запись в БД делается отдельно, последовательно (SQLite — один писатель).
         """
         import os as _os
         from concurrent.futures import ThreadPoolExecutor
 
+        from ..models import Catalog
+
         targets = []
         for c in competitors:
-            has_selectors = bool(c.title_selector and c.price_selector)
+            cats = Catalog.query.filter_by(competitor_id=c.id).all()
+            has_selectors = any(cat.title_selector and cat.price_selector for cat in cats)
             # Свой сайт без селекторов не скрапим — он обновится снимком цен.
             if c.is_user_site and not has_selectors:
                 continue
@@ -48,16 +51,17 @@ class PriceUpdateService:
                 can_update, _ = PriceUpdateService.can_update_competitor(c)
                 if not can_update:
                     continue
-            url = c.domain
-            if not url.startswith(('http://', 'https://')):
-                url = f'https://{url}'
-            targets.append((c.id, url, c.title_selector, c.price_selector, c.feed_url))
+            for cat in cats:
+                url = cat.url or c.domain
+                if not url.startswith(('http://', 'https://')):
+                    url = f'https://{url}'
+                targets.append((cat.id, url, cat.title_selector, cat.price_selector, cat.feed_url))
 
         if not targets:
             return {}
 
         def scrape(task):
-            cid, url, title, price, feed_url = task
+            cat_id, url, title, price, feed_url = task
             try:
                 logger.info(f"[СБОР] старт: {url}")
                 sp = SiteParser()
@@ -68,10 +72,10 @@ class PriceUpdateService:
                 else:
                     prods, _, _ = sp.collect_products(url, feed_url=feed_url)
                 logger.info(f"[СБОР] готово: {url} — товаров {len(prods) if prods else 0}")
-                return cid, prods
+                return cat_id, prods
             except Exception as e:
                 logger.error(f"[СБОР] ошибка: {url} — {e}")
-                return cid, None
+                return cat_id, None
 
         use_selenium = _os.environ.get('PARSER_USE_SELENIUM', '1') != '0'
         default_cap = 3 if use_selenium else 8
@@ -82,125 +86,140 @@ class PriceUpdateService:
         worker_cap = max(1, worker_cap)
         out = {}
         with ThreadPoolExecutor(max_workers=min(worker_cap, len(targets))) as ex:
-            for cid, prods in ex.map(scrape, targets):
-                out[cid] = prods
+            for cat_id, prods in ex.map(scrape, targets):
+                out[cat_id] = prods
         return out
 
     @staticmethod
-    def update_competitor_prices(competitor_id, prefetched_html=None, prefetched_products=None,
+    def _update_one_catalog(competitor, catalog, prefetched_products=None, use_prefetched=False):
+        """Обновляет цены одного каталога. Возвращает dict со status и счётчиками.
+        use_prefetched=True — товары уже собраны (prefetched_products, может быть
+        None при ошибке сбора); иначе скрапим здесь."""
+        if use_prefetched:
+            products_data = prefetched_products
+        else:
+            url = catalog.url or competitor.domain
+            if not url.startswith(('http://', 'https://')):
+                url = f'https://{url}'
+            parser = SiteParser()
+            if catalog.title_selector and catalog.price_selector:
+                first_html = parser.get_page(url, scroll_selector=catalog.title_selector, scroll=False)
+                if not first_html:
+                    catalog.update_status = 'error'
+                    catalog.update_error_message = 'Сайт не отвечает или недоступен'
+                    return {'status': 'site_unavailable', 'updated_count': 0,
+                            'created_count': 0, 'not_found_count': 0, 'price_changes': []}
+                products_data = parser.parse_products_paginated(
+                    url, catalog.title_selector, catalog.price_selector, first_html=first_html
+                )
+            else:
+                products_data, _, feed_cache = parser.collect_products(url, feed_url=catalog.feed_url)
+                if feed_cache is not None:
+                    catalog.feed_url = feed_cache
+
+        if not products_data:
+            catalog.update_status = 'partial'
+            catalog.update_error_message = 'Товары не найдены'
+            return {'status': 'no_products', 'updated_count': 0,
+                    'created_count': 0, 'not_found_count': 0, 'price_changes': []}
+
+        upsert_result = upsert_competitor_products(
+            competitor.id,
+            products_data,
+            on_existing=lambda product: PriceUpdateService._record_linked_user_product_price(product.id),
+            catalog_id=catalog.id,
+        )
+        catalog.last_price_update = datetime.utcnow()
+        nf = upsert_result['not_found_count']
+        catalog.update_status = 'success' if nf == 0 else 'partial'
+        catalog.update_error_message = None if nf == 0 else f'{nf} товаров не найдено'
+        return {
+            'status': catalog.update_status,
+            'updated_count': upsert_result['updated_count'],
+            'created_count': upsert_result['created_count'],
+            'not_found_count': nf,
+            'price_changes': upsert_result['price_changes'],
+        }
+
+    @staticmethod
+    def update_competitor_prices(competitor_id, prefetched_by_catalog=None,
                                  respect_rate_limit=True):
         """
-        Метод обновления цены для одного сайта.
-        prefetched_html — заранее загруженный HTML первой страницы.
-        prefetched_products — уже собранные товары (параллельный сбор): если
-            переданы, скрейпинг пропускается, идёт только запись в БД.
-        respect_rate_limit — учитывать лимит «раз в 3 минуты». Для системного
-            (ночного) обновления передаём False.
-        Возвращает dict с полями status, updated_count, errors, etc.
+        Обновление цен конкурента по ВСЕМ его каталогам.
+        prefetched_by_catalog — {catalog_id: products|None} из параллельного сбора;
+            если передан, скрейпинг пропускается, идёт только запись в БД.
+        respect_rate_limit — учитывать лимит «раз в 3 минуты».
+        Возвращает dict с полями status, updated_count, etc.
         """
+        from ..models import Catalog
+        from ..services.analysis_service import CatalogService
+
         competitor = Competitor.query.get(competitor_id)
         if not competitor:
             logger.debug(f"[DEBUG] Competitor {competitor_id} not found in database")
-            return {
-                'success': False,
-                'error': 'Конкурент не найден',
-                'status': 'error'
-            }
+            return {'success': False, 'error': 'Конкурент не найден', 'status': 'error'}
 
         if respect_rate_limit:
             can_update, error_msg = PriceUpdateService.can_update_competitor(competitor)
             if not can_update:
                 logger.debug(f"[DEBUG] Competitor {competitor_id} is rate limited: {error_msg}")
-                return {
-                    'success': False,
-                    'error': error_msg,
-                    'status': 'rate_limited'
-                }
+                return {'success': False, 'error': error_msg, 'status': 'rate_limited'}
 
-        # Источник товаров: заранее собранные (параллельный сбор) → по готовым
-        # селекторам → авто-извлечение, если селекторы не настроены.
-        if prefetched_products is not None:
-            products_data = prefetched_products
+        catalogs = Catalog.query.filter_by(competitor_id=competitor_id).all()
+        if not catalogs:
+            # старый конкурент без каталога — создаём основной
+            catalogs = [CatalogService.ensure_primary_catalog(competitor)]
+
+        has_selectors = any(c.title_selector and c.price_selector for c in catalogs)
+        use_prefetched = prefetched_by_catalog is not None
+
+        # Свой сайт без селекторов не скрапим — снимок текущих цен в историю.
+        if competitor.is_user_site and not has_selectors:
+            return PriceUpdateService._snapshot_user_site_prices(competitor)
+
+        updated_count = created_count = not_found_count = 0
+        price_changes = []
+        statuses = []
+        for cat in catalogs:
+            res = PriceUpdateService._update_one_catalog(
+                competitor, cat,
+                prefetched_products=(prefetched_by_catalog or {}).get(cat.id),
+                use_prefetched=use_prefetched,
+            )
+            statuses.append(res['status'])
+            updated_count += res['updated_count']
+            created_count += res['created_count']
+            not_found_count += res['not_found_count']
+            price_changes.extend(res['price_changes'])
+
+        # сводный статус конкурента
+        if any(s in ('success', 'partial') for s in statuses):
+            overall = 'success' if all(s == 'success' for s in statuses) else 'partial'
+        elif any(s == 'site_unavailable' for s in statuses):
+            overall = 'site_unavailable'
         else:
-            # Свой сайт без селекторов не скрапим — фиксируем текущие цены как
-            # историю (каталог там заведён владельцем, а не парсингом).
-            if competitor.is_user_site and not (competitor.title_selector and competitor.price_selector):
-                return PriceUpdateService._snapshot_user_site_prices(competitor)
-
-            url = competitor.domain
-            if not url.startswith(('http://', 'https://')):
-                url = f'https://{url}'
-
-            parser = SiteParser()
-            if competitor.title_selector and competitor.price_selector:
-                logger.debug(f"[DEBUG] Обновление {competitor_id} по селекторам: {url}")
-                first_html = prefetched_html if prefetched_html is not None else parser.get_page(
-                    url, scroll_selector=competitor.title_selector, scroll=False
-                )
-                if not first_html:
-                    logger.debug(f"[DEBUG] Не удалось получить HTML: {url}")
-                    competitor.update_status = 'error'
-                    competitor.update_error_message = 'Сайт не отвечает или недоступен'
-                    db.session.commit()
-                    return {
-                        'success': False,
-                        'error': 'Сайт не отвечает',
-                        'status': 'site_unavailable',
-                        'competitor_id': competitor_id,
-                        'competitor_domain': competitor.domain,
-                    }
-                products_data = parser.parse_products_paginated(
-                    url, competitor.title_selector, competitor.price_selector, first_html=first_html
-                )
-            else:
-                logger.debug(f"[DEBUG] Обновление {competitor_id} авто-извлечением: {url}")
-                products_data, _, feed_cache = parser.collect_products(
-                    url, feed_url=competitor.feed_url
-                )
-                if feed_cache is not None:
-                    competitor.feed_url = feed_cache
-
-        logger.debug(f"[DEBUG] Собрано товаров: {len(products_data) if products_data else 0}")
-
-        if not products_data:
-            competitor.update_status = 'partial'
-            competitor.update_error_message = 'Товары не найдены'
-            db.session.commit()
-
-            return {
-                'success': False,
-                'error': 'Товары не найдены',
-                'status': 'no_products',
-                'competitor_id': competitor_id,
-                'competitor_domain': competitor.domain
-            }
-
-        upsert_result = upsert_competitor_products(
-            competitor_id,
-            products_data,
-            on_existing=lambda product: PriceUpdateService._record_linked_user_product_price(product.id),
-        )
-        updated_count = upsert_result['updated_count']
-        created_count = upsert_result['created_count']
-        not_found_count = upsert_result['not_found_count']
-        price_changes = upsert_result['price_changes']
+            overall = 'no_products'
 
         competitor.last_price_update = datetime.utcnow()
-        competitor.update_status = 'success' if not_found_count == 0 else 'partial'
-        competitor.update_error_message = None if competitor.update_status == 'success' else f'{not_found_count} товаров не найдено'
-
+        competitor.update_status = overall
+        competitor.update_error_message = (
+            None if overall == 'success'
+            else (f'{not_found_count} товаров не найдено' if overall == 'partial'
+                  else 'Товары не найдены')
+        )
         db.session.commit()
 
+        success = overall in ('success', 'partial')
         return {
-            'success': True,
-            'status': competitor.update_status,
+            'success': success,
+            'status': overall,
             'competitor_id': competitor_id,
             'competitor_domain': competitor.domain,
             'updated_count': updated_count,
             'created_count': created_count,
             'not_found_count': not_found_count,
             'price_changes': price_changes,
-            'last_update': competitor.last_price_update.isoformat()
+            'last_update': competitor.last_price_update.isoformat(),
         }
 
     @staticmethod
@@ -306,7 +325,7 @@ class PriceUpdateService:
 
         for competitor in competitors:
             result = PriceUpdateService.update_competitor_prices(
-                competitor.id, prefetched_products=collected.get(competitor.id),
+                competitor.id, prefetched_by_catalog=collected,
                 respect_rate_limit=respect_rate_limit
             )
             results.append(result)

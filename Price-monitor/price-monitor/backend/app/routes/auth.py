@@ -156,6 +156,35 @@ def get_current_user():
 
     return jsonify({'user': user.to_dict()}), 200
 
+@auth_bp.route('/change-password', methods=['POST'])
+@jwt_required()
+def change_password():
+    user = User.query.get(get_jwt_identity())
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    data = request.get_json() or {}
+    old_password = data.get('old_password', '')
+    new_password = data.get('new_password', '')
+
+    if not old_password or not new_password:
+        return jsonify({'error': 'Укажите старый и новый пароль'}), 400
+
+    if not user.check_password(old_password):
+        return jsonify({'error': 'Неверный текущий пароль'}), 400
+
+    pwd_err = password_error(new_password)
+    if pwd_err:
+        return jsonify({'error': pwd_err}), 400
+
+    if user.check_password(new_password):
+        return jsonify({'error': 'Новый пароль совпадает со старым'}), 400
+
+    user.set_password(new_password)
+    db.session.commit()
+    return jsonify({'message': 'Пароль успешно изменён'}), 200
+
+
 @auth_bp.route('/confirm-email', methods=['POST'])
 def confirm_email():
     """Подтверждение почты по токену из письма. При успехе логиним (отдаём токены)."""
