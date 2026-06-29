@@ -42,7 +42,7 @@ export function AuthProvider({ children }) {
 
   // Регистрация больше не логинит сразу — нужно подтвердить email.
   const register = async (email, password) => {
-    const response = await api.post('/auth/register', { email, password })
+    const response = await api.post('/auth/register', { email, password, consent: true })
     return response.data
   }
 

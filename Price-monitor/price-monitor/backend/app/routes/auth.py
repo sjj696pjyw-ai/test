@@ -1,6 +1,6 @@
 import os
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import (
@@ -86,10 +86,14 @@ def register():
     if pwd_err:
         return jsonify({'error': pwd_err}), 400
 
+    # Согласие на обработку ПДн (152-ФЗ) обязательно для регистрации.
+    if not data.get('consent'):
+        return jsonify({'error': 'Необходимо согласие на обработку персональных данных'}), 400
+
     if User.query.filter_by(email=email).first():
         return jsonify({'error': 'Email already registered'}), 409
 
-    user = User(email=email, email_confirmed=False)
+    user = User(email=email, email_confirmed=False, consent_at=datetime.utcnow())
     user.set_password(password)
 
     db.session.add(user)

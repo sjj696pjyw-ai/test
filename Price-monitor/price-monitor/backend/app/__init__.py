@@ -39,6 +39,7 @@ def _ensure_columns():
     # существующих пользователей считаем подтверждёнными (DEFAULT 1), чтобы не
     # запереть их новым гейтом; новые регистрации ставят False явно через ORM.
     add_column('users', 'email_confirmed', 'email_confirmed BOOLEAN NOT NULL DEFAULT 1')
+    add_column('users', 'consent_at', 'consent_at DATETIME')
     # Каталоги: товар теперь принадлежит каталогу. Таблицу catalogs создаёт
     # db.create_all(); здесь добавляем колонку и заполняем дефолтные каталоги.
     add_column('products', 'catalog_id', 'catalog_id INTEGER')

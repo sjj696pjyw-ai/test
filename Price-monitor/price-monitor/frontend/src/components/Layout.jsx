@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { BarChart3, LogOut, Menu, X, Sun, Moon, User } from 'lucide-react'
 import { useState } from 'react'
+import CookieBanner from './CookieBanner'
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth()
@@ -134,6 +135,30 @@ export default function Layout({ children }) {
       </header>
 
       <main className="flex-1">{children}</main>
+
+      <footer className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            © {new Date().getFullYear()} PriceMonitor
+          </p>
+          <nav className="flex items-center gap-4 text-sm">
+            <Link
+              to="/privacy"
+              className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+            >
+              Политика конфиденциальности
+            </Link>
+            <Link
+              to="/consent"
+              className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+            >
+              Согласие на обработку ПДн
+            </Link>
+          </nav>
+        </div>
+      </footer>
+
+      <CookieBanner />
     </div>
   )
 }

@@ -13,6 +13,8 @@ import Dashboard from './pages/Dashboard'
 import Profile from './pages/Profile'
 import AnalysisDetail from './pages/AnalysisDetail'
 import SelectorsSetup from './pages/SelectorsSetup'
+import PrivacyPolicy from './pages/PrivacyPolicy'
+import Consent from './pages/Consent'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -100,6 +102,8 @@ export default function App() {
                 />
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/confirm-email" element={<ConfirmEmail />} />
+                <Route path="/privacy" element={<PrivacyPolicy />} />
+                <Route path="/consent" element={<Consent />} />
                 <Route
                   path="/dashboard"
                   element={

@@ -9,6 +9,7 @@ export default function Register() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [consent, setConsent] = useState(false)
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState(null)
@@ -37,6 +38,10 @@ export default function Register() {
       newErrors.confirmPassword = 'Подтверждение пароля обязательно'
     } else if (password !== confirmPassword) {
       newErrors.confirmPassword = 'Пароли не совпадают'
+    }
+
+    if (!consent) {
+      newErrors.consent = 'Необходимо согласие на обработку персональных данных'
     }
 
     setErrors(newErrors)
@@ -209,9 +214,48 @@ export default function Register() {
             )}
           </div>
 
+          <div>
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => {
+                  setConsent(e.target.checked)
+                  if (errors.consent) setErrors({ ...errors, consent: '' })
+                }}
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                Я даю{' '}
+                <Link
+                  to="/consent"
+                  target="_blank"
+                  className="text-primary-600 dark:text-primary-400 hover:underline"
+                >
+                  согласие на обработку персональных данных
+                </Link>{' '}
+                и принимаю{' '}
+                <Link
+                  to="/privacy"
+                  target="_blank"
+                  className="text-primary-600 dark:text-primary-400 hover:underline"
+                >
+                  Политику конфиденциальности
+                </Link>
+                .
+              </span>
+            </label>
+            {errors.consent && (
+              <p className="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                {errors.consent}
+              </p>
+            )}
+          </div>
+
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !consent}
             className="btn-primary w-full flex items-center justify-center"
           >
             {loading ? (
