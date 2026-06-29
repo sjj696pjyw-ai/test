@@ -5,6 +5,9 @@ import { useToast } from '../context/ToastContext'
 import { Mail, Lock, AlertCircle, CheckCircle } from 'lucide-react'
 import { passwordError, passwordStrength } from '../utils/password'
 
+// Временно отключённая регистрация: поставьте false, чтобы снова включить кнопку.
+const REGISTRATION_CLOSED = true
+
 export default function Register() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -51,6 +54,7 @@ export default function Register() {
   const handleSubmit = (e) => {
     e.preventDefault()
 
+    if (REGISTRATION_CLOSED) return
     if (!validate()) return
 
     setLoading(true)
@@ -255,7 +259,7 @@ export default function Register() {
 
           <button
             type="submit"
-            disabled={loading || !consent}
+            disabled={REGISTRATION_CLOSED || loading || !consent}
             className="btn-primary w-full flex items-center justify-center"
           >
             {loading ? (
@@ -267,6 +271,11 @@ export default function Register() {
               'Зарегистрироваться'
             )}
           </button>
+          {REGISTRATION_CLOSED && (
+            <p className="text-center text-sm text-gray-500 dark:text-gray-400">
+              Регистрация временно недоступна
+            </p>
+          )}
         </form>
       </div>
     </div>

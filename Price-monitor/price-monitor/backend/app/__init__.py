@@ -1,16 +1,22 @@
+import logging
 import os
+import time
+import uuid
 
-from flask import Flask, jsonify, request
+from flask import Flask, g, jsonify, request
 from flask_bcrypt import Bcrypt
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
+from werkzeug.exceptions import HTTPException
 
-from app.logging_config import configure_logging
+from app.logging_config import configure_logging, reset_request_id, set_request_id
 from app.models import db
 from config.config import config
 
 jwt = JWTManager()
 bcrypt = Bcrypt()
+_req_logger = logging.getLogger('request')
+_app_logger = logging.getLogger('app')
 
 
 def _ensure_columns():
@@ -114,6 +120,47 @@ def create_app(config_name='default'):
 
     from app.scheduler import start_scheduler
     start_scheduler(app)
+
+    @app.before_request
+    def _begin_request():
+        g._req_start = time.monotonic()
+        rid = request.headers.get('X-Request-ID') or uuid.uuid4().hex[:12]
+        g._req_id = rid
+        g._req_id_token = set_request_id(rid)
+
+    @app.after_request
+    def _log_request(response):
+        # Логируем только API (без healthcheck), статику и health пропускаем.
+        path = request.path
+        if path.startswith('/api') and path != '/api/health':
+            dur_ms = (time.monotonic() - getattr(g, '_req_start', time.monotonic())) * 1000
+            try:
+                from flask_jwt_extended import get_jwt_identity
+                uid = get_jwt_identity() or '-'
+            except Exception:
+                uid = '-'
+            _req_logger.info(
+                '%s %s -> %s %.0fms user=%s ip=%s',
+                request.method, path, response.status_code, dur_ms, uid,
+                request.headers.get('X-Forwarded-For', request.remote_addr),
+            )
+        response.headers['X-Request-ID'] = getattr(g, '_req_id', '-')
+        return response
+
+    @app.teardown_request
+    def _end_request(exc):
+        token = getattr(g, '_req_id_token', None)
+        if token is not None:
+            reset_request_id(token)
+
+    @app.errorhandler(Exception)
+    def _handle_unexpected(e):
+        # HTTP-ошибки (404/403/405/...) отдаём как есть; необработанные —
+        # логируем с полным трейсбеком и request-id, отвечаем 500.
+        if isinstance(e, HTTPException):
+            return e
+        _app_logger.exception('Необработанное исключение: %s', e)
+        return jsonify({'error': 'Internal server error'}), 500
 
     @app.route('/api/health', methods=['GET'])
     def health_check():
