@@ -6,7 +6,7 @@ import { Mail, Lock, AlertCircle, CheckCircle } from 'lucide-react'
 import { passwordError, passwordStrength } from '../utils/password'
 
 // Временно отключённая регистрация: поставьте false, чтобы снова включить кнопку.
-const REGISTRATION_CLOSED = true
+const REGISTRATION_CLOSED = false
 
 export default function Register() {
   const [email, setEmail] = useState('')
