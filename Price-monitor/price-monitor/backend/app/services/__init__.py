@@ -1,3 +1,4 @@
+from . import bench_service
 from .analysis_service import (
     AnalysisService,
     CatalogService,
@@ -9,6 +10,7 @@ from .analysis_service import (
 from .price_update_service import PriceUpdateService
 
 __all__ = [
+    'bench_service',
     'AnalysisService',
     'CatalogService',
     'CompetitorService',

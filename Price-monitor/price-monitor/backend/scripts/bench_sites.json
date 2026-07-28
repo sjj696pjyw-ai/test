@@ -1,0 +1,63 @@
+{
+  "_comment": [
+    "Набор реальных каталогов для массового прогона сбора товаров.",
+    "Поля: name — метка в отчёте; url — страница каталога; expect_min — ожидаемый",
+    "минимум товаров (регрессией считается падение ниже); expect_method — ожидаемый",
+    "способ сбора (необязательно); note — заметка о специфике сайта.",
+    "Список пополняйте: чем больше сайтов, тем раньше видно поломки алгоритма."
+  ],
+  "sites": [
+    {
+      "name": "e2e4 (ноутбуки)",
+      "url": "https://novosibirsk.e2e4online.ru/catalog/noutbuki-42/",
+      "expect_min": 1000,
+      "expect_method": "dom",
+      "note": "Nuxt SPA. Пейджер на кнопках, ссылок нет. Работает подбор ?page=. Всего ~1587."
+    },
+    {
+      "name": "rus-buket (розы)",
+      "url": "https://novosibirsk.rus-buket.ru/catalog/rozy",
+      "expect_min": 25,
+      "expect_method": "dom",
+      "note": "DOM-карточки. Была проблема: climb уходил в грид-контейнер."
+    },
+    {
+      "name": "rus-buket (пионы)",
+      "url": "https://novosibirsk.rus-buket.ru/catalog/piony",
+      "expect_min": 10,
+      "note": "Тот же сайт, другой раздел."
+    },
+    {
+      "name": "mokryinos (влажные корма)",
+      "url": "https://mokryinos.ru/catalog/sobaki/korma_vlazhnye",
+      "expect_min": 30,
+      "expect_method": "dom",
+      "note": "JSON-LD отдаёт 1 товар — проверяем, что побеждает DOM (было ~36-39). Бывает недоступен с сервера."
+    },
+    {
+      "name": "i-point (iPhone 17)",
+      "url": "https://i-point.ru/iphone-17",
+      "expect_min": 15,
+      "expect_method": "dom",
+      "note": "Имя в h3, ссылка в пустом оверлее — проверяем захват ссылок на карточки."
+    },
+    {
+      "name": "sibdroid (iPhone 17)",
+      "url": "https://sibdroid.ru/catalog/apple_iphone_17/",
+      "expect_min": 15,
+      "note": "Каталог из боевой БД."
+    },
+    {
+      "name": "amournsk (розы)",
+      "url": "https://amournsk.ru/catalog/tsvety/rozy/",
+      "expect_min": 20,
+      "note": "Каталог из боевой БД, много товаров."
+    },
+    {
+      "name": "buketopt (розы)",
+      "url": "https://buketopt.ru/catalog/rosas",
+      "expect_min": 10,
+      "note": "Раньше парсился 1 бракованный товар «розы 95р» из JSON-LD."
+    }
+  ]
+}
