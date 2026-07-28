@@ -1149,6 +1149,105 @@ class SiteParser:
         # вкладки ещё нет (или fetch не сработал) — обычная навигация
         return self.get_page(url, scroll=False)
 
+    # Кандидаты параметра сортировки. Берём преимущественно сортировку по цене:
+    # её результат можно проверить объективно — цены на странице обязаны идти
+    # по возрастанию (или убыванию).
+    _SORT_CANDIDATES = (
+        'sort=price', 'sort=price_asc', 'sort=price-asc', 'sort=PRICE',
+        'sort=cheap', 'order=price', 'orderby=price', 'sort_by=price',
+        'sortBy=price', 'sorting=price', 'sort=name', 'sort=NAME',
+    )
+
+    @staticmethod
+    def _with_extra_query(url, extra):
+        """Добавляет параметр к URL, не ломая уже существующие."""
+        if not extra:
+            return url
+        base, _, frag = url.partition('#')
+        joiner = '&' if '?' in base else '?'
+        out = f'{base}{joiner}{extra}'
+        return f'{out}#{frag}' if frag else out
+
+    @staticmethod
+    def _looks_sorted(products, min_ratio=0.9):
+        """Похоже ли, что товары упорядочены по цене (в любую сторону)."""
+        prices = [float(p['price']) for p in products
+                  if isinstance(p.get('price'), (int, float))]
+        if len(prices) < 5:
+            return False
+        pairs = len(prices) - 1
+        asc = sum(1 for a, b in zip(prices, prices[1:]) if a <= b)
+        desc = sum(1 for a, b in zip(prices, prices[1:]) if a >= b)
+        return max(asc, desc) >= pairs * min_ratio
+
+    def _probe_sort_param(self, base_url, method, base_products):
+        """Подбирает параметр стабильной сортировки для каталога.
+
+        Зачем: каталоги с сортировкой «по популярности» переупорядочиваются между
+        запросами — товары кочуют между страницами, часть приходит дважды, часть
+        не попадается вовсе. Если зафиксировать порядок (например, по цене),
+        страницы становятся стабильными и каталог собирается за один проход.
+
+        Параметр принимается, только если результат ОБЪЕКТИВНО отсортирован:
+        цены на странице идут по возрастанию или убыванию.
+        """
+        # если каталог и так отсортирован по цене — фиксировать нечего
+        if self._looks_sorted(base_products):
+            self._trace('подбор_сортировки', результат='каталог уже упорядочен по цене')
+            return None
+
+        for candidate in self._SORT_CANDIDATES:
+            probe_url = self._with_extra_query(base_url, candidate)
+            html = self._fetch_catalog_page(probe_url)
+            if not html:
+                continue
+            items = run_extractor(method, html) or []
+            if len(items) < 5:
+                continue
+            if self._looks_sorted(items):
+                self._trace('подбор_сортировки', параметр=candidate,
+                            результат='ПОДОШЁЛ (цены упорядочены)', товаров=len(items))
+                return candidate
+        self._trace('подбор_сортировки', результат='параметр не подобран — '
+                    'обход будет с повторами')
+        return None
+
+    def _extra_passes(self, url_for_page, method, add, first_page, last_page,
+                      acc, total_hint, max_passes=3, polite_delay=0.15):
+        """Повторные проходы по тем же страницам — добор недостающих товаров.
+
+        Зачем: каталоги с сортировкой «по популярности» переупорядочиваются между
+        запросами. Из-за этого часть товаров приходит по два раза, а часть не
+        попадает ни на одну запрошенную страницу. При повторном проходе порядок
+        уже другой, и «пропущенные» товары всплывают. Проход дешёвый (страница
+        около секунды), поэтому добираем, пока есть смысл и остаётся время.
+        """
+        if not total_hint or len(acc) >= total_hint or last_page < first_page:
+            return
+        try:
+            budget = float(os.environ.get('COLLECT_EXTRA_SECONDS', '45'))
+        except (TypeError, ValueError):
+            budget = 45.0
+        deadline = time.monotonic() + budget
+
+        for attempt in range(1, max_passes + 1):
+            before = len(acc)
+            for page in range(first_page, last_page + 1):
+                if len(acc) >= total_hint or time.monotonic() > deadline:
+                    break
+                html = self._fetch_catalog_page(url_for_page(page))
+                if html:
+                    add(run_extractor(method, html))
+                if polite_delay:
+                    time.sleep(polite_delay)
+            gained = len(acc) - before
+            self._trace('добор', проход=attempt, найдено_ещё=gained, всего=len(acc),
+                        из_заявленных=total_hint)
+            # смысла продолжать нет: либо всё собрали, либо новое перестало
+            # появляться, либо кончилось время
+            if gained == 0 or len(acc) >= total_hint or time.monotonic() > deadline:
+                break
+
     def _trace_dedup_check(self, kept):
         """Решающая проверка дедупликации.
 
@@ -1370,7 +1469,8 @@ class SiteParser:
                 if key in seen:
                     self._dup_same_url += 1
                     if len(self._dup_examples) < 5:
-                        self._dup_examples.append(f'«{p["name"][:42]}» {p["price"]} …{url[-34:]}')
+                        # имя целиком: обрезка мешала понять, тот же это товар
+                        self._dup_examples.append(f'«{p["name"]}» {p["price"]} …{url[-40:]}')
                     continue
                 seen[key] = p
                 acc.append(p)
@@ -1417,6 +1517,8 @@ class SiteParser:
                 f"[СБОР] пагинация по ссылкам ({method}): до стр. {last}, товаров {len(acc)}"
                 + (f" из ~{total_hint}" if total_hint else "")
             )
+            self._extra_passes(lambda i: page_urls[i - 2], method, add,
+                               first_page=2, last_page=last, acc=acc, total_hint=total_hint)
             self._trace_dedup_check(len(acc))
             self._trace('итог', тир='пагинация по ссылкам', товаров=len(acc),
                         всего_на_сайте=(total_hint or '—'))
@@ -1432,10 +1534,27 @@ class SiteParser:
             if total_hint and page1_count:
                 # с запасом: сколько страниц нужно, чтобы покрыть весь каталог
                 max_pages = min(max_pages, int(total_hint / page1_count) + 5)
+
+            # Фиксируем порядок товаров, если каталог это позволяет: иначе он
+            # переупорядочивается между запросами и часть товаров не попадает
+            # ни на одну страницу (см. _probe_sort_param).
+            sort_param = None
+            if total_hint and total_hint > page1_count * 3:
+                sort_param = self._probe_sort_param(url, method, products)
+
+            def page_url(i):
+                return self._with_extra_query(
+                    self._build_page_url(url, pattern, i), sort_param)
+
+            # с зафиксированной сортировкой первая страница другая — соберём и её
+            if sort_param:
+                first_sorted = self._fetch_catalog_page(page_url(1))
+                if first_sorted:
+                    add(run_extractor(method, first_sorted))
+
             last = self._walk_pages(
-                lambda i: self._build_page_url(url, pattern, i),
-                method, add,
-                start=3, max_pages=max_pages, enough=enough,
+                page_url, method, add,
+                start=2 if sort_param else 3, max_pages=max_pages, enough=enough,
                 expected_per_page=page1_count,
             )
             logger.info(
@@ -1447,9 +1566,15 @@ class SiteParser:
                     f"[СБОР] каталог собран не полностью: {len(acc)} из ~{total_hint} "
                     f"(остановились на стр. {last})"
                 )
+            # Добор нужен только если порядок не зафиксирован: со стабильной
+            # сортировкой повторов нет и второй проход бесполезен.
+            if not sort_param:
+                self._extra_passes(page_url, method, add, first_page=2,
+                                   last_page=last, acc=acc, total_hint=total_hint)
             self._trace_dedup_check(len(acc))
             self._trace('итог', тир=f'подбор схемы «{pattern}»', товаров=len(acc),
-                        всего_на_сайте=(total_hint or '—'), до_страницы=last)
+                        всего_на_сайте=(total_hint or '—'), до_страницы=last,
+                        сортировка=(sort_param or 'по умолчанию'))
             return acc, method
 
         self._trace('подбор_схемы', результат='ни одна схема не подошла')
