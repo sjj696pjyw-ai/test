@@ -823,6 +823,86 @@ class SiteParser:
                 urls.append(u)
         return urls
 
+    # Схемы постраничных URL для «слепого» перебора, когда ссылок пагинации нет
+    # (SPA-пейджеры на <button>): (шаблон query, добавляется ли к пути).
+    _PAGE_PATTERNS = (
+        '?page=\x00',
+        '?PAGEN_1=\x00',
+        '?p=\x00',
+        'page/\x00/',
+    )
+
+    @staticmethod
+    def _total_products_hint(html):
+        """Сколько всего товаров заявлено на странице каталога (если написано).
+
+        Ищем «(1 582 товара)», «Найдено 1582 товара», «всего: 1582» и т.п.
+        Возвращает int или None. Нужно, чтобы понять, что собрана лишь часть.
+        """
+        if not html:
+            return None
+        # Вырезаем script/style: там лежат общие счётчики сайта («более 185 000
+        # товаров» в JSON-LD), которые не имеют отношения к текущему каталогу.
+        cleaned = re.sub(r'(?is)<(script|style)[^>]*>.*?</\1>', ' ', html)
+        text = re.sub(r'<[^>]+>', ' ', cleaned).replace('\xa0', ' ')
+        # число может быть с разделителями: 1 582, 1,582, 1.582
+        num = r'\d{1,3}(?:[  ,.]\d{3})+|\d+'
+        pat = re.compile(
+            rf'(?:найдено|всего)\D{{0,12}}({num})'
+            rf'|({num})\s*(?:товаров|товара|товар)\b',
+            re.IGNORECASE,
+        )
+        for m in pat.finditer(text):
+            raw = m.group(1) or m.group(2) or ''
+            digits = re.sub(r'[^\d]', '', raw)
+            if not digits:
+                continue
+            n = int(digits)
+            if 1 <= n <= 1000000:
+                return n  # первое упоминание в видимом тексте — счётчик каталога
+        return None
+
+    def _build_page_url(self, base_url, pattern, num):
+        """Подставляет номер страницы в схему: query (?page=N) или путь (/page/N/)."""
+        placeholder = '\x00'
+        if pattern.startswith('?'):
+            param = pattern[1:].split('=')[0]
+            return self._with_page_param(base_url, param, num)
+        # путь: /catalog/x/ + page/N/
+        base = base_url.split('?')[0].split('#')[0]
+        if not base.endswith('/'):
+            base += '/'
+        return base + pattern.replace(placeholder, str(num))
+
+    def _probe_page_urls(self, base_url, method, base_keys, max_pages=200):
+        """Фолбэк, когда href-пагинации нет: подбираем рабочую схему постраничных
+        URL «вслепую».
+
+        Для каждой схемы (?page=2, ?PAGEN_1=2, ?p=2, /page/2/) грузим страницу 2 и
+        сравниваем состав товаров с первой. Схема считается рабочей, только если
+        товары ОТЛИЧАЮТСЯ от первой страницы (иначе сайт просто игнорирует параметр
+        и отдаёт ту же страницу). Возвращает (pattern, products_page2) или (None, []).
+        """
+        for pattern in self._PAGE_PATTERNS:
+            url2 = self._build_page_url(base_url, pattern, 2)
+            if url2 == base_url:
+                continue
+            html2 = self._fetch_html_requests(url2)
+            if not html2:
+                continue
+            items = run_extractor(method, html2) or []
+            if not items:
+                continue
+            keys = {(p['name'].strip().lower(), round(float(p['price']), 2)) for p in items}
+            # страница 2 должна давать преимущественно НОВЫЕ товары
+            new = keys - base_keys
+            if len(new) >= max(1, int(len(keys) * 0.5)):
+                logger.debug(
+                    f"[DEBUG] Пагинация подобрана: {pattern} (стр.2: {len(items)}, новых {len(new)})"
+                )
+                return pattern, items
+        return None, []
+
     @staticmethod
     def _looks_scrollable(html):
         """Есть ли на странице признаки догрузки (кнопка «показать ещё» / скролл)."""
@@ -857,12 +937,18 @@ class SiteParser:
             return n
 
         add(products)
+        page1_count = len(acc)
+        total_hint = self._total_products_hint(base_html)
+
+        def enough():
+            """Собрали всё, что заявлено на странице (если число известно)."""
+            return bool(total_hint) and len(acc) >= total_hint
 
         # SHOWALL уже вернул весь каталог одной страницей — пагинация не нужна
         if html_source and 'showall' in html_source:
             return acc, method
 
-        # Тир: нумерованная пагинация по URL
+        # Тир 1: нумерованная пагинация по ссылкам в разметке
         page_urls = self._page_urls_from_pagination(url, base_html)
         if page_urls:
             zero = 0
@@ -877,15 +963,59 @@ class SiteParser:
                         break
                 else:
                     zero = 0
-            logger.debug(f"[DEBUG] Пагинация (авто, {method}): до стр. {last}, всего {len(acc)}")
+                if enough():
+                    break
+            logger.info(
+                f"[СБОР] пагинация по ссылкам ({method}): до стр. {last}, товаров {len(acc)}"
+                + (f" из ~{total_hint}" if total_hint else "")
+            )
             return acc, method
 
-        # Тир: показать ещё / бесконечный скролл — рендер браузером со скроллом
-        if html_source and html_source.startswith('requests') and self._looks_scrollable(base_html):
+        # Тир 2 (фолбэк): ссылок нет — подбираем схему постраничных URL «вслепую».
+        # Нужен для SPA-каталогов, где пейджер сделан кнопками (Nuxt/React).
+        base_keys = set(seen)
+        pattern, page2 = self._probe_page_urls(url, method, base_keys)
+        if pattern:
+            add(page2)
+            zero = 0
+            page = 3
+            max_pages = 200
+            if total_hint and page1_count:
+                # с запасом: сколько страниц нужно, чтобы покрыть весь каталог
+                max_pages = min(max_pages, int(total_hint / page1_count) + 3)
+            while page <= max_pages and not enough():
+                u = self._build_page_url(url, pattern, page)
+                html = self._fetch_html_requests(u)
+                added = add(run_extractor(method, html)) if html else 0
+                if added == 0:
+                    zero += 1
+                    if zero >= 2:
+                        break
+                else:
+                    zero = 0
+                page += 1
+            logger.info(
+                f"[СБОР] пагинация подбором «{pattern}» ({method}): до стр. {page - 1}, "
+                f"товаров {len(acc)}" + (f" из ~{total_hint}" if total_hint else "")
+            )
+            return acc, method
+
+        # Тир 3: показать ещё / бесконечный скролл — рендер браузером со скроллом.
+        # Пробуем всегда (а не только когда HTML пришёл через requests), иначе
+        # результат зависел от того, каким транспортом получена страница.
+        if self._looks_scrollable(base_html) or (total_hint and total_hint > len(acc)):
             scrolled = self.get_page(url, scroll=True)
             if scrolled:
                 add(run_extractor(method, scrolled))
-                logger.debug(f"[DEBUG] Скролл (авто, {method}): всего {len(acc)}")
+                logger.info(
+                    f"[СБОР] догрузка скроллом ({method}): товаров {len(acc)}"
+                    + (f" из ~{total_hint}" if total_hint else "")
+                )
+
+        if total_hint and len(acc) < total_hint:
+            logger.warning(
+                f"[СБОР] собрана часть каталога: {len(acc)} из ~{total_hint} — {url}"
+            )
 
         return acc, method
 

@@ -14,6 +14,15 @@ _COLLECT_TTL = 180
 def _collect_cache_key(competitor_id, url, title_selector, price_selector):
     return (competitor_id, url or '', title_selector or '', price_selector or '')
 
+
+def _preview_cache_key(url):
+    """Ключ кэша результата предпросмотра по URL (без привязки к конкуренту).
+
+    Нужен, чтобы сбор после «Найти товары» сохранял ровно то, что пользователь
+    увидел в предпросмотре: иначе повторный проход мог дать другое число товаров
+    (например, скролл/браузер отработали иначе)."""
+    return ('preview', url or '', '', '')
+
 def _collect_cache_get(key):
     entry = _COLLECT_CACHE.get(key)
     if entry and (time.time() - entry[0]) < _COLLECT_TTL:
@@ -210,17 +219,21 @@ class CatalogService:
                 'got': host_of(normalized),
             }
 
-        # 2) сбор товаров
-        parser = SiteParser()
-        try:
-            products, method, feed_cache = parser.collect_products(
-                normalized, title_selector, price_selector
-            )
-        except Exception as e:
-            logger.error(f"[КАТАЛОГ] ошибка сбора {normalized}: {e}")
-            return {'error': 'no_products'}
-        finally:
-            parser.close()
+        # 2) сбор товаров: если по этому URL только что был предпросмотр —
+        #    сохраняем ровно то, что пользователь увидел на экране
+        feed_cache = None
+        products = _collect_cache_get(_preview_cache_key(normalized))
+        if products is None:
+            parser = SiteParser()
+            try:
+                products, method, feed_cache = parser.collect_products(
+                    normalized, title_selector, price_selector
+                )
+            except Exception as e:
+                logger.error(f"[КАТАЛОГ] ошибка сбора {normalized}: {e}")
+                return {'error': 'no_products'}
+            finally:
+                parser.close()
 
         if not products:
             return {'error': 'no_products'}
@@ -318,6 +331,11 @@ class SiteParsingService:
         finally:
             parser.close()
 
+        # Кладём полный результат в кэш: последующий сбор по этому же URL сохранит
+        # ровно то, что пользователь увидел в предпросмотре (без повторного обхода).
+        if products:
+            _collect_cache_set(_preview_cache_key(normalized), products)
+
         return {
             'success': bool(products),
             'method': method,
@@ -336,6 +354,9 @@ class SiteParsingService:
 
         cache_key = _collect_cache_key(competitor_id, url, title_selector, price_selector)
         products = _collect_cache_get(cache_key)
+        if products is None:
+            # результат предпросмотра по этому URL (что пользователь видел на экране)
+            products = _collect_cache_get(_preview_cache_key(url))
         if products is None:
             logger.info(f"[СБОР] старт: {url}")
             parser = SiteParser()
