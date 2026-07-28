@@ -198,8 +198,17 @@ class SiteParser:
                 return None, []
 
             driver.get(url)
-            time.sleep(1.5)
-            # клик по «Показать ещё» + скролл — чтобы сайт точно сходил за 2-й порцией
+            time.sleep(2.0)
+
+            # ВАЖНО: чистим буфер после загрузки страницы. Иначе он забивается
+            # запросами начальной загрузки, и запрос за следующей порцией
+            # товаров (то, что нам нужно) в него уже не попадает.
+            try:
+                driver.execute_script("window.__pmNet = [];")
+            except Exception:
+                pass
+
+            # клик по «Показать ещё» + скролл — чтобы сайт сходил за 2-й порцией
             clicked = self._click_load_more(driver)
             if not clicked:
                 try:
@@ -213,16 +222,20 @@ class SiteParser:
                 if clicked:
                     time.sleep(2.5)
 
+            # Оцениваем ВСЕ перехваченные вызовы по числу извлечённых товаров.
+            # Фильтровать по виду URL нельзя: у нужного запроса адрес может
+            # выглядеть как угодно, и мы его потеряем (так и было — из 53
+            # вызовов фильтр оставлял 2 бесполезных).
             all_calls = api_sniffer.collect_calls(driver)
-            calls = [c for c in all_calls if api_sniffer.looks_like_api_url(c.get('url'))]
+            calls = all_calls
             logger.info(
-                f"[API] перехвачено вызовов: {len(all_calls)} (кандидатов {len(calls)}), "
+                f"[API] после клика перехвачено вызовов: {len(all_calls)}, "
                 f"клик по «показать ещё»: {'да' if clicked else 'нет'}"
             )
             if not all_calls:
                 logger.warning(
-                    "[ДИАГНОСТИКА API] сайт не сделал ни одного fetch/XHR — "
-                    "товары могут догружаться иначе"
+                    "[ДИАГНОСТИКА API] после клика сайт не сделал ни одного fetch/XHR — "
+                    "товары догружаются другим способом (проверьте, сработал ли клик)"
                 )
             return api_sniffer.find_product_api(calls)
         except Exception as e:

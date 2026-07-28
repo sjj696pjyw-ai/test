@@ -32,7 +32,9 @@ HOOK_JS = r"""
   if (window.__pmNet) return;
   window.__pmNet = [];
   const MAX = %d;
-  const keep = (entry) => { if (window.__pmNet.length < 60) window.__pmNet.push(entry); };
+  // Буфер намеренно большой: при загрузке страницы сайт делает десятки
+  // запросов, и нужный (за следующей порцией товаров) идёт последним.
+  const keep = (entry) => { if (window.__pmNet.length < 400) window.__pmNet.push(entry); };
 
   const origFetch = window.fetch;
   if (origFetch) {
@@ -184,17 +186,24 @@ def find_product_api(calls, min_products=3):
         return best, best_products
 
     # Ничего не подошло — печатаем, что вообще видели, иначе причину не понять.
+    # hits — признаки товарных данных в сыром ответе: если он большой и hits>0,
+    # значит запрос мы поймали, но не распознали его формат.
     scored.sort(key=lambda x: (-x[0], -x[1]))
     logger.warning(
         f"[ДИАГНОСТИКА API] источник товаров не найден: вызовов {len(calls)}, "
         f"максимум товаров в ответе {max([s[0] for s in scored], default=0)}"
     )
-    for n, size, call in scored[:6]:
+    for n, size, call in scored[:8]:
+        text = call.get('text') or ''
+        hits = len(re.findall(r'"(?:price|minPrice|salePrice|cost|name|title)"\s*:', text))
         logger.warning(
             f"[ДИАГНОСТИКА API]   {call.get('method', '?'):4} "
             f"статус={call.get('status')} размер={size} товаров={n} "
-            f"{str(call.get('url'))[:110]}"
+            f"признаков_товара={hits} {str(call.get('url'))[:110]}"
         )
+        # у самого «товарного» ответа показываем начало — по нему видно формат
+        if hits > 0 and size > 500:
+            logger.warning(f"[ДИАГНОСТИКА API]   начало ответа: {text[:400]}")
     return None, []
 
 
