@@ -967,6 +967,52 @@ class SiteParser:
             base += '/'
         return base + pattern.replace(placeholder, str(num))
 
+    def _walk_pages(self, url_for_page, method, add, start, max_pages, enough,
+                    polite_delay=0.25):
+        """Обходит страницы каталога, накапливая товары.
+
+        Ключевой момент: «страница не загрузилась» и «на странице нет новых
+        товаров» — разные ситуации. Сетевую ошибку повторяем (сайт может
+        придушивать частые запросы), и только реальное отсутствие новых товаров
+        несколько раз подряд считаем концом каталога.
+
+        Возвращает номер последней обработанной страницы.
+        """
+        empty_streak = 0      # страниц подряд без новых товаров
+        fail_streak = 0       # страниц подряд, которые не удалось загрузить
+        page = start
+        while page <= max_pages and not enough():
+            u = url_for_page(page)
+            html = self._fetch_html_requests(u)
+            if not html:
+                # даём сайту передохнуть и пробуем ещё раз
+                time.sleep(1.5)
+                html = self._fetch_html_requests(u)
+            if not html:
+                fail_streak += 1
+                logger.debug(f"[DEBUG] страница {page} не загрузилась ({u})")
+                if fail_streak >= 3:
+                    logger.warning(
+                        f"[СБОР] обход прерван: {fail_streak} страниц подряд не загрузились "
+                        f"(стр. {page}) — возможно, сайт ограничивает частоту запросов"
+                    )
+                    break
+                page += 1
+                continue
+
+            fail_streak = 0
+            added = add(run_extractor(method, html))
+            if added == 0:
+                empty_streak += 1
+                if empty_streak >= 3:
+                    break
+            else:
+                empty_streak = 0
+            page += 1
+            if polite_delay:
+                time.sleep(polite_delay)
+        return page - 1
+
     def _probe_page_urls(self, base_url, method, base_keys, max_pages=200):
         """Фолбэк, когда href-пагинации нет: подбираем рабочую схему постраничных
         URL «вслепую».
@@ -1044,20 +1090,11 @@ class SiteParser:
         # Тир 1: нумерованная пагинация по ссылкам в разметке
         page_urls = self._page_urls_from_pagination(url, base_html)
         if page_urls:
-            zero = 0
-            last = 1
-            for u in page_urls:
-                html = self._fetch_html_requests(u)
-                added = add(run_extractor(method, html)) if html else 0
-                last += 1
-                if added == 0:
-                    zero += 1
-                    if zero >= 2:
-                        break
-                else:
-                    zero = 0
-                if enough():
-                    break
+            last = self._walk_pages(
+                lambda i: page_urls[i - 2],   # page_urls[0] — это страница 2
+                method, add,
+                start=2, max_pages=len(page_urls) + 1, enough=enough,
+            )
             logger.info(
                 f"[СБОР] пагинация по ссылкам ({method}): до стр. {last}, товаров {len(acc)}"
                 + (f" из ~{total_hint}" if total_hint else "")
@@ -1070,27 +1107,24 @@ class SiteParser:
         pattern, page2 = self._probe_page_urls(url, method, base_keys)
         if pattern:
             add(page2)
-            zero = 0
-            page = 3
-            max_pages = 200
+            max_pages = 300
             if total_hint and page1_count:
                 # с запасом: сколько страниц нужно, чтобы покрыть весь каталог
-                max_pages = min(max_pages, int(total_hint / page1_count) + 3)
-            while page <= max_pages and not enough():
-                u = self._build_page_url(url, pattern, page)
-                html = self._fetch_html_requests(u)
-                added = add(run_extractor(method, html)) if html else 0
-                if added == 0:
-                    zero += 1
-                    if zero >= 2:
-                        break
-                else:
-                    zero = 0
-                page += 1
+                max_pages = min(max_pages, int(total_hint / page1_count) + 5)
+            last = self._walk_pages(
+                lambda i: self._build_page_url(url, pattern, i),
+                method, add,
+                start=3, max_pages=max_pages, enough=enough,
+            )
             logger.info(
-                f"[СБОР] пагинация подбором «{pattern}» ({method}): до стр. {page - 1}, "
+                f"[СБОР] пагинация подбором «{pattern}» ({method}): до стр. {last}, "
                 f"товаров {len(acc)}" + (f" из ~{total_hint}" if total_hint else "")
             )
+            if total_hint and len(acc) < total_hint:
+                logger.warning(
+                    f"[СБОР] каталог собран не полностью: {len(acc)} из ~{total_hint} "
+                    f"(остановились на стр. {last})"
+                )
             return acc, method
 
         # Тир 3: внутренний API каталога. Для SPA без постраничных URL это
