@@ -19,7 +19,21 @@ import sys
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
 
+# ВАЖНО: те же переменные окружения, что и у приложения (main.py делает то же).
+# Без этого парсер вёл бы себя иначе, чем в проде: PARSER_USE_SELENIUM,
+# CHROME_BIN, CHROMEDRIVER_PATH, LOG_LEVEL и прочее просто не подхватились бы.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(BASE_DIR, '.env'))
+    load_dotenv()
+except ImportError:
+    pass
+
+from app.logging_config import configure_logging  # noqa: E402
 from app.services import bench_service as bs  # noqa: E402
+
+# то же логирование, что и в проде: видны [ТРАССА] и [СБОР]
+configure_logging()
 
 
 def print_report(report):

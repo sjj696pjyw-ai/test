@@ -37,6 +37,19 @@ class SiteParser:
         self._reuse_driver = False
         self._base_url = None  # для абсолютизации ссылок на карточки товаров
         self._last_fetch_error = None  # причина последней неудачи requests-фетча
+        # Трасса сбора: какие тиры отработали и с каким результатом. Нужна,
+        # чтобы по итогам прогона было видно, ПОЧЕМУ собрано столько товаров,
+        # а не только сколько (см. bench_service).
+        self.trace = []
+
+    def _trace(self, step, **fields):
+        """Добавляет шаг в трассу сбора и дублирует его в лог."""
+        entry = {'step': step}
+        entry.update(fields)
+        self.trace.append(entry)
+        details = ' '.join(f'{k}={v}' for k, v in fields.items())
+        logger.info(f'[ТРАССА] {step}: {details}')
+        return entry
 
     def _get_headers(self):
         return get_default_headers()
@@ -980,8 +993,13 @@ class SiteParser:
         """
         empty_streak = 0      # страниц подряд без новых товаров
         fail_streak = 0       # страниц подряд, которые не удалось загрузить
+        failed_pages = []     # какие страницы так и не загрузились
         page = start
-        while page <= max_pages and not enough():
+        stop_reason = 'дошли до конца диапазона'
+        while page <= max_pages:
+            if enough():
+                stop_reason = 'собрано всё, что заявлено на сайте'
+                break
             u = url_for_page(page)
             html = self._fetch_html_requests(u)
             if not html:
@@ -990,12 +1008,10 @@ class SiteParser:
                 html = self._fetch_html_requests(u)
             if not html:
                 fail_streak += 1
-                logger.debug(f"[DEBUG] страница {page} не загрузилась ({u})")
+                failed_pages.append(page)
                 if fail_streak >= 3:
-                    logger.warning(
-                        f"[СБОР] обход прерван: {fail_streak} страниц подряд не загрузились "
-                        f"(стр. {page}) — возможно, сайт ограничивает частоту запросов"
-                    )
+                    stop_reason = (f'{fail_streak} страниц подряд не загрузились '
+                                   f'(сайт ограничивает частоту запросов?)')
                     break
                 page += 1
                 continue
@@ -1005,12 +1021,19 @@ class SiteParser:
             if added == 0:
                 empty_streak += 1
                 if empty_streak >= 3:
+                    stop_reason = 'три страницы подряд без новых товаров (конец каталога)'
                     break
             else:
                 empty_streak = 0
             page += 1
             if polite_delay:
                 time.sleep(polite_delay)
+        else:
+            stop_reason = f'достигнут лимит страниц ({max_pages})'
+
+        self._trace('обход_страниц', до_страницы=page - 1, причина_остановки=stop_reason,
+                    не_загрузились=(failed_pages[:10] or '—'),
+                    последняя_ошибка=(self._last_fetch_error or '—'))
         return page - 1
 
     def _probe_page_urls(self, base_url, method, base_keys, max_pages=200):
@@ -1028,18 +1051,28 @@ class SiteParser:
                 continue
             html2 = self._fetch_html_requests(url2)
             if not html2:
+                # ВАЖНО: сетевой сбой здесь раньше молча отбраковывал рабочую
+                # схему и весь сбор уходил на медленный скролл. Пробуем ещё раз.
+                time.sleep(1.5)
+                html2 = self._fetch_html_requests(url2)
+            if not html2:
+                self._trace('подбор_схемы', схема=pattern, результат='страница не загрузилась',
+                            ошибка=self._last_fetch_error)
                 continue
             items = run_extractor(method, html2) or []
             if not items:
+                self._trace('подбор_схемы', схема=pattern, результат='товары не извлеклись',
+                            размер_html=len(html2))
                 continue
             keys = {(p['name'].strip().lower(), round(float(p['price']), 2)) for p in items}
             # страница 2 должна давать преимущественно НОВЫЕ товары
             new = keys - base_keys
             if len(new) >= max(1, int(len(keys) * 0.5)):
-                logger.debug(
-                    f"[DEBUG] Пагинация подобрана: {pattern} (стр.2: {len(items)}, новых {len(new)})"
-                )
+                self._trace('подбор_схемы', схема=pattern, результат='ПОДОШЛА',
+                            товаров=len(items), новых=len(new))
                 return pattern, items
+            self._trace('подбор_схемы', схема=pattern, результат='та же страница',
+                        товаров=len(items), новых=len(new))
         return None, []
 
     @staticmethod
@@ -1078,6 +1111,9 @@ class SiteParser:
         add(products)
         page1_count = len(acc)
         total_hint = self._total_products_hint(base_html)
+        self._trace('страница_1', способ=method, товаров=page1_count,
+                    всего_на_сайте=(total_hint or 'не указано'),
+                    источник_html=(html_source or '—'), размер_html=len(base_html or ''))
 
         def enough():
             """Собрали всё, что заявлено на странице (если число известно)."""
@@ -1085,6 +1121,7 @@ class SiteParser:
 
         # SHOWALL уже вернул весь каталог одной страницей — пагинация не нужна
         if html_source and 'showall' in html_source:
+            self._trace('итог', тир='showall', товаров=len(acc))
             return acc, method
 
         # Тир 1: нумерованная пагинация по ссылкам в разметке
@@ -1099,6 +1136,8 @@ class SiteParser:
                 f"[СБОР] пагинация по ссылкам ({method}): до стр. {last}, товаров {len(acc)}"
                 + (f" из ~{total_hint}" if total_hint else "")
             )
+            self._trace('итог', тир='пагинация по ссылкам', товаров=len(acc),
+                        всего_на_сайте=(total_hint or '—'))
             return acc, method
 
         # Тир 2 (фолбэк): ссылок нет — подбираем схему постраничных URL «вслепую».
@@ -1125,7 +1164,11 @@ class SiteParser:
                     f"[СБОР] каталог собран не полностью: {len(acc)} из ~{total_hint} "
                     f"(остановились на стр. {last})"
                 )
+            self._trace('итог', тир=f'подбор схемы «{pattern}»', товаров=len(acc),
+                        всего_на_сайте=(total_hint or '—'), до_страницы=last)
             return acc, method
+
+        self._trace('подбор_схемы', результат='ни одна схема не подошла')
 
         # Тир 3: внутренний API каталога. Для SPA без постраничных URL это
         # единственный способ забрать весь каталог быстро: один раз ловим в
@@ -1147,12 +1190,17 @@ class SiteParser:
                     + (f" из ~{total_hint}" if total_hint else "")
                 )
                 if not total_hint or len(acc) >= total_hint or added_first or more:
+                    self._trace('итог', тир='внутренний API', товаров=len(acc),
+                                всего_на_сайте=(total_hint or '—'))
                     return acc, method
+            else:
+                self._trace('внутренний_API', результат='источник товаров не найден')
 
         # Тир 4: показать ещё / бесконечный скролл — рендер браузером со скроллом.
         # Пробуем всегда (а не только когда HTML пришёл через requests), иначе
         # результат зависел от того, каким транспортом получена страница.
         if self._looks_scrollable(base_html) or (total_hint and total_hint > len(acc)):
+            before = len(acc)
             scrolled = self.get_page(url, scroll=True)
             if scrolled:
                 add(run_extractor(method, scrolled))
@@ -1160,12 +1208,18 @@ class SiteParser:
                     f"[СБОР] догрузка скроллом ({method}): товаров {len(acc)}"
                     + (f" из ~{total_hint}" if total_hint else "")
                 )
+                self._trace('скролл', было=before, стало=len(acc), добавлено=len(acc) - before)
+            else:
+                self._trace('скролл', результат='браузер не отдал страницу',
+                            ошибка=(self._last_fetch_error or '—'))
 
         if total_hint and len(acc) < total_hint:
             logger.warning(
                 f"[СБОР] собрана часть каталога: {len(acc)} из ~{total_hint} — {url}"
             )
 
+        self._trace('итог', тир='скролл/страница 1', товаров=len(acc),
+                    всего_на_сайте=(total_hint or '—'))
         return acc, method
 
     def collect_products(self, url, name_selector=None, price_selector=None, feed_url=None):

@@ -80,14 +80,22 @@ def bench_summary():
     if not path:
         return jsonify({'error': 'Отчётов пока нет'}), 404
     report = bench_service.load_report(path)
+    problem_names = {reg['name'] for reg in report.get('regressions', [])}
     lines = []
     for r in report.get('rows', []):
         status = bench_service.verdict(r)
+        hint = f' из ~{r["total_hint"]}' if r.get('total_hint') else ''
         lines.append(
-            f'{status.upper():5} {r["name"][:32]:32} {r["count"]:>6} товаров  '
-            f'{str(r["method"] or "-"):12} {r["elapsed"]:>6}с'
+            f'{status.upper():5} {r["name"][:32]:32} {r["count"]:>6} товаров{hint}  '
+            f'{str(r["method"] or "-"):12} {r["elapsed"]:>6}с  '
+            f'тир: {r.get("tier") or "—"}'
             + (f'  ошибка: {r["error"][:60]}' if r.get('error') else '')
         )
+        # для проблемных сайтов сразу показываем трассу — не надо лезть в логи
+        if status != 'ok' or r['name'] in problem_names:
+            for step in r.get('trace', []):
+                details = ' '.join(f'{k}={v}' for k, v in step.items() if k != 'step')
+                lines.append(f'      └ {step.get("step")}: {details}')
     return jsonify({
         'started_at': report.get('started_at'),
         'summary': report.get('summary'),

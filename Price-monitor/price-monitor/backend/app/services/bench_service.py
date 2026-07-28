@@ -32,7 +32,10 @@ def load_sites(path=None):
 
 def run_site(site):
     """Прогоняет один сайт. Никогда не бросает исключение наружу."""
-    url = site['url']
+    # Нормализация — как в проде (preview_products), иначе URL без схемы
+    # обрабатывался бы иначе, чем при обычном добавлении товаров.
+    raw = site['url']
+    url = raw if raw.startswith(('http://', 'https://')) else f'https://{raw}'
     started = time.monotonic()
     parser = None
     row = {
@@ -41,12 +44,20 @@ def run_site(site):
         'expect_min': site.get('expect_min'),
         'expect_method': site.get('expect_method'),
         'count': 0, 'method': None, 'elapsed': 0.0, 'with_url': 0,
-        'error': None, 'samples': [],
+        'error': None, 'samples': [], 'trace': [], 'total_hint': None, 'tier': None,
         'price_min': None, 'price_max': None, 'price_median': None,
     }
     try:
         parser = SiteParser()
         products, method, _feed = parser.collect_products(url)
+        # трасса тиров: по ней видно, ПОЧЕМУ собрано столько товаров
+        row['trace'] = list(getattr(parser, 'trace', []) or [])
+        for step in row['trace']:
+            if step.get('step') == 'страница_1':
+                hint = step.get('всего_на_сайте')
+                row['total_hint'] = hint if isinstance(hint, int) else None
+            if step.get('step') == 'итог':
+                row['tier'] = step.get('тир')
         row['count'] = len(products or [])
         row['method'] = method
         if products:
