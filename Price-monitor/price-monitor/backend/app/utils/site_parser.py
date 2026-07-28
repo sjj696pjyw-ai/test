@@ -41,6 +41,7 @@ class SiteParser:
         self._requests_blocked = False
         self._tried_browser_session = False  # пробовали ли забрать cookies браузера
         self._browser_ua = None              # User-Agent браузера (к его cookies)
+        self._used_browser_fetch = False     # логируем быстрый путь один раз
         # Трасса сбора: какие тиры отработали и с каким результатом. Нужна,
         # чтобы по итогам прогона было видно, ПОЧЕМУ собрано столько товаров,
         # а не только сколько (см. bench_service).
@@ -130,10 +131,49 @@ class SiteParser:
         driver_path = os.environ.get('CHROMEDRIVER_PATH', '/usr/bin/chromedriver')
         service = Service(executable_path=driver_path) if os.path.exists(driver_path) else Service()
 
+        # Ждём готовности DOM, а не полной загрузки картинок/шрифтов: товары
+        # уже в разметке, а ожидание «всего» добавляло секунды на каждую страницу.
+        options.page_load_strategy = 'eager'
+        # Картинки нам не нужны — это заметно ускоряет тяжёлые каталоги.
+        try:
+            options.add_experimental_option(
+                'prefs', {'profile.managed_default_content_settings.images': 2}
+            )
+        except Exception:
+            pass
+
         driver = webdriver.Chrome(service=service, options=options)
         driver.set_page_load_timeout(30)
         driver.set_script_timeout(20)
         return driver
+
+    def _browser_fetch(self, url):
+        """Запрашивает URL прямо из открытой вкладки браузера (fetch внутри страницы).
+
+        Зачем: когда сайт режет обычные запросы, полная навигация браузером
+        стоит ~9 секунд на страницу — каталог из 64 страниц не собрать никогда.
+        Здесь запрос уходит из контекста самой страницы: те же cookies, тот же
+        отпечаток (значит 403 не будет), но без рендеринга — около секунды.
+        """
+        driver = self._driver
+        if driver is None:
+            return None
+        try:
+            html = driver.execute_async_script(
+                """
+                const cb = arguments[arguments.length - 1];
+                fetch(arguments[0], {credentials: 'include',
+                                     headers: {'Accept': 'text/html'}})
+                  .then(r => r.ok ? r.text() : null)
+                  .then(t => cb(t))
+                  .catch(() => cb(null));
+                """,
+                url,
+            )
+            return html or None
+        except Exception as e:
+            logger.debug(f'[DEBUG] fetch внутри браузера не удался: {e}')
+            return None
 
     def _adopt_browser_session(self, driver):
         """Переносит cookies и User-Agent браузера в requests-сессию.
@@ -1074,6 +1114,21 @@ class SiteParser:
 
         if not self.use_selenium or _SELENIUM_DISABLED:
             return None
+
+        # Быстрый путь: тянем страницу через fetch внутри уже открытой вкладки
+        # (~1с вместо ~9с на полную навигацию).
+        if self._driver is not None:
+            html = self._browser_fetch(url)
+            if html:
+                if not self._used_browser_fetch:
+                    self._used_browser_fetch = True
+                    self._trace('fetch_в_браузере', результат='работает',
+                                размер_html=len(html))
+                return html
+            if not self._used_browser_fetch:
+                self._trace('fetch_в_браузере', результат='не сработал, '
+                            'обхожу навигацией (медленно)')
+        # вкладки ещё нет (или fetch не сработал) — обычная навигация
         return self.get_page(url, scroll=False)
 
     def _walk_pages(self, url_for_page, method, add, start, max_pages, enough,
