@@ -1149,6 +1149,32 @@ class SiteParser:
         # вкладки ещё нет (или fetch не сработал) — обычная навигация
         return self.get_page(url, scroll=False)
 
+    def _trace_dedup_check(self, kept):
+        """Решающая проверка дедупликации.
+
+        Сайт отдал какое-то число РАЗНЫХ карточек — это число уникальных ссылок
+        среди всего, что мы получили. Если сохранённых товаров не меньше, значит
+        дедуп ничего не склеил и недобор целиком на стороне сайта. Если меньше —
+        мы теряем товары сами, и это надо чинить.
+        """
+        unique_urls = len(getattr(self, '_all_urls', ()) or ())
+        no_url = getattr(self, '_items_without_url', 0)
+        if unique_urls:
+            lost = unique_urls + (1 if no_url else 0) - kept
+            verdict = ('дедуп ничего не потерял' if kept >= unique_urls
+                       else f'ВНИМАНИЕ: потеряно ~{lost} — склеены разные карточки')
+        else:
+            verdict = 'ссылок на карточки нет — проверить нечем'
+        self._trace('проверка_дедупа', уникальных_ссылок=unique_urls,
+                    сохранено_товаров=kept, товаров_без_ссылки=no_url, вывод=verdict)
+
+        collisions = getattr(self, '_name_price_collisions', 0)
+        if collisions:
+            # Совпало имя и цена, но ссылки разные. Сейчас такие товары НЕ
+            # склеиваются; раньше на этом терялись позиции.
+            self._trace('совпало_имя_и_цена_разные_ссылки', количество=collisions,
+                        примеры=' | '.join(getattr(self, '_collision_examples', [])[:3]) or '—')
+
     def _walk_pages(self, url_for_page, method, add, start, max_pages, enough,
                     polite_delay=0.25, expected_per_page=0):
         """Обходит страницы каталога, накапливая товары.
@@ -1231,31 +1257,18 @@ class SiteParser:
         # ни на одной из запрошенных страниц.
         duplicates = fetched_total - added_total
         same_url = getattr(self, '_dup_same_url', 0)
-        other_url = getattr(self, '_dup_other_url', 0)
         self._trace('учёт_товаров', получено_с_страниц=fetched_total,
                     новых=added_total, повторов=duplicates,
-                    тот_же_товар=same_url, разные_товары=other_url,
                     страниц_с_недобором=(', '.join(short_pages[:12]) or '—'),
                     повторы_по_страницам=(', '.join(dup_pages[:12]) or '—'))
-        # Разделяем два принципиально разных случая:
-        #  - тот же товар встретился снова: сайт переупорядочил каталог;
-        #  - разные ссылки при одинаковых имени и цене: наш ключ дедупа слишком
-        #    грубый и склеивает РАЗНЫЕ товары (это уже наша ошибка).
-        if other_url:
+
+        if same_url:
             logger.warning(
-                f'[СБОР] дедуп склеил РАЗНЫЕ товары (одинаковые имя и цена, разные '
-                f'ссылки): {other_url}. Примеры:'
+                f'[СБОР] тот же товар (та же ссылка) приходил повторно {same_url} раз '
+                f'из {fetched_total} — сайт меняет порядок товаров между запросами. Примеры:'
             )
             for ex in getattr(self, '_dup_examples', [])[:5]:
                 logger.warning(f'[СБОР]   {ex}')
-            self._trace('склейка_разных_товаров', количество=other_url,
-                        примеры=' | '.join(getattr(self, '_dup_examples', [])[:3]) or '—')
-        if same_url and same_url > fetched_total * 0.1:
-            logger.warning(
-                f'[СБОР] тот же товар приходил повторно {same_url} раз из {fetched_total} '
-                f'({same_url * 100 // max(1, fetched_total)}%) — сайт меняет порядок '
-                f'товаров между запросами'
-            )
         return page - 1
 
     def _probe_page_urls(self, base_url, method, base_keys, max_pages=200):
@@ -1321,26 +1334,43 @@ class SiteParser:
         # на карточку и понять, тот же это товар или разные товары схлопнулись
         # одним ключом (имя+цена).
         seen, acc = {}, []
-        self._dup_same_url = 0      # повтор того же товара (сайт переставил его)
-        self._dup_other_url = 0     # РАЗНЫЕ товары с одинаковым именем и ценой
-        self._dup_examples = []
+        # Счётчики для проверки самого дедупа (см. трассу «проверка_дедупа»):
+        self._dup_same_url = 0        # тот же товар пришёл повторно
+        self._dup_examples = []       # примеры повторов (имя + ссылка)
+        self._all_urls = set()        # все встреченные ссылки на карточки
+        self._all_name_price = {}     # (имя,цена) -> первая ссылка: ловим совпадения
+        self._name_price_collisions = 0
+        self._collision_examples = []
+        self._items_without_url = 0
 
         def add(items):
             n = 0
             for p in items:
+                url = (p.get('url') or '').strip().lower().split('#')[0].rstrip('/')
+                if url:
+                    self._all_urls.add(url)
+                else:
+                    self._items_without_url += 1
+
+                # Отдельно (не влияя на дедуп) считаем, сколько товаров совпадают
+                # по имени и цене, но ведут на РАЗНЫЕ карточки. Раньше такие
+                # склеивались — теперь только фиксируем факт.
+                np_key = (p['name'].strip().lower(), round(float(p['price']), 2))
+                first_url = self._all_name_price.get(np_key)
+                if first_url is None:
+                    self._all_name_price[np_key] = url
+                elif url and first_url and url != first_url:
+                    self._name_price_collisions += 1
+                    if len(self._collision_examples) < 5:
+                        self._collision_examples.append(
+                            f'«{p["name"][:42]}» {p["price"]}: …{first_url[-32:]} ≠ …{url[-32:]}'
+                        )
+
                 key = self._product_key(p)
                 if key in seen:
-                    old = seen[key]
-                    new_url = (p.get('url') or '').strip()
-                    old_url = (old.get('url') or '').strip()
-                    if new_url and old_url and new_url != old_url:
-                        self._dup_other_url += 1
-                        if len(self._dup_examples) < 5:
-                            self._dup_examples.append(
-                                f'«{p["name"][:45]}» {p["price"]}: {old_url[-38:]} ≠ {new_url[-38:]}'
-                            )
-                    else:
-                        self._dup_same_url += 1
+                    self._dup_same_url += 1
+                    if len(self._dup_examples) < 5:
+                        self._dup_examples.append(f'«{p["name"][:42]}» {p["price"]} …{url[-34:]}')
                     continue
                 seen[key] = p
                 acc.append(p)
@@ -1387,6 +1417,7 @@ class SiteParser:
                 f"[СБОР] пагинация по ссылкам ({method}): до стр. {last}, товаров {len(acc)}"
                 + (f" из ~{total_hint}" if total_hint else "")
             )
+            self._trace_dedup_check(len(acc))
             self._trace('итог', тир='пагинация по ссылкам', товаров=len(acc),
                         всего_на_сайте=(total_hint or '—'))
             return acc, method
@@ -1416,6 +1447,7 @@ class SiteParser:
                     f"[СБОР] каталог собран не полностью: {len(acc)} из ~{total_hint} "
                     f"(остановились на стр. {last})"
                 )
+            self._trace_dedup_check(len(acc))
             self._trace('итог', тир=f'подбор схемы «{pattern}»', товаров=len(acc),
                         всего_на_сайте=(total_hint or '—'), до_страницы=last)
             return acc, method
