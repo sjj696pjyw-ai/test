@@ -37,6 +37,8 @@ class SiteParser:
         self._reuse_driver = False
         self._base_url = None  # для абсолютизации ссылок на карточки товаров
         self._last_fetch_error = None  # причина последней неудачи requests-фетча
+        # Сайт отдаёт 403/429 на обычные запросы: страницы забираем браузером.
+        self._requests_blocked = False
         # Трасса сбора: какие тиры отработали и с каким результатом. Нужна,
         # чтобы по итогам прогона было видно, ПОЧЕМУ собрано столько товаров,
         # а не только сколько (см. bench_service).
@@ -980,6 +982,37 @@ class SiteParser:
             base += '/'
         return base + pattern.replace(placeholder, str(num))
 
+    def _fetch_catalog_page(self, url):
+        """Забирает страницу каталога тем же способом, каким удалось забрать первую.
+
+        Часть сайтов (напр. e2e4) отдаёт 403 на обычные HTTP-запросы, но пускает
+        настоящий браузер. Раньше обход страниц ходил ТОЛЬКО через requests и на
+        таких сайтах упирался в 403: пагинация не находилась, и сбор скатывался
+        на медленный скролл. Теперь, если requests заблокирован, страницы берём
+        браузером (без прокрутки — она тут не нужна).
+        """
+        if not self._requests_blocked:
+            html = self._fetch_html_requests(url)
+            if html:
+                return html
+            err = (self._last_fetch_error or '').lower()
+            # 403/401/429 — признак блокировки обычных запросов, а не поломки
+            if not any(code in err for code in ('403', '401', '429', 'forbidden')):
+                return None
+            self._requests_blocked = True
+            # держим один браузер на все страницы: перезапуск Chrome на каждую
+            # съел бы всё время обхода
+            self._reuse_driver = True
+            logger.warning(
+                f'[СБОР] сайт блокирует обычные запросы ({self._last_fetch_error}) — '
+                f'перехожу на браузер для остальных страниц'
+            )
+            self._trace('переход_на_браузер', причина=self._last_fetch_error)
+
+        if not self.use_selenium or _SELENIUM_DISABLED:
+            return None
+        return self.get_page(url, scroll=False)
+
     def _walk_pages(self, url_for_page, method, add, start, max_pages, enough,
                     polite_delay=0.25):
         """Обходит страницы каталога, накапливая товары.
@@ -996,16 +1029,26 @@ class SiteParser:
         failed_pages = []     # какие страницы так и не загрузились
         page = start
         stop_reason = 'дошли до конца диапазона'
+        # Бюджет времени: через браузер страница грузится в разы дольше, и без
+        # ограничения обход большого каталога затянулся бы на минуты.
+        try:
+            budget = float(os.environ.get('COLLECT_MAX_SECONDS', '180'))
+        except (TypeError, ValueError):
+            budget = 180.0
+        deadline = time.monotonic() + budget
         while page <= max_pages:
             if enough():
                 stop_reason = 'собрано всё, что заявлено на сайте'
                 break
+            if time.monotonic() > deadline:
+                stop_reason = f'исчерпан бюджет времени ({budget:.0f}с)'
+                break
             u = url_for_page(page)
-            html = self._fetch_html_requests(u)
+            html = self._fetch_catalog_page(u)
             if not html:
                 # даём сайту передохнуть и пробуем ещё раз
                 time.sleep(1.5)
-                html = self._fetch_html_requests(u)
+                html = self._fetch_catalog_page(u)
             if not html:
                 fail_streak += 1
                 failed_pages.append(page)
@@ -1049,12 +1092,12 @@ class SiteParser:
             url2 = self._build_page_url(base_url, pattern, 2)
             if url2 == base_url:
                 continue
-            html2 = self._fetch_html_requests(url2)
+            html2 = self._fetch_catalog_page(url2)
             if not html2:
                 # ВАЖНО: сетевой сбой здесь раньше молча отбраковывал рабочую
                 # схему и весь сбор уходил на медленный скролл. Пробуем ещё раз.
                 time.sleep(1.5)
-                html2 = self._fetch_html_requests(url2)
+                html2 = self._fetch_catalog_page(url2)
             if not html2:
                 self._trace('подбор_схемы', схема=pattern, результат='страница не загрузилась',
                             ошибка=self._last_fetch_error)
@@ -1247,7 +1290,14 @@ class SiteParser:
             shopify = self._absolutize(shopify, url)
             return self._dedup_absolute(shopify), 'shopify', feed_cache
 
-        products, method = self._auto_collect(url, full_html, html_source) if full_html else ([], None)
+        try:
+            products, method = (self._auto_collect(url, full_html, html_source)
+                                if full_html else ([], None))
+        finally:
+            # если переходили на браузерный обход — освобождаем Chrome
+            if self._reuse_driver:
+                self._reuse_driver = False
+                self.close()
         if products:
             products = self._absolutize(products, url)
             products = self._dedup_absolute(products)
