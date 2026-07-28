@@ -1,6 +1,7 @@
 import logging
 import time
 from datetime import datetime
+from urllib.parse import urlsplit
 
 from ..models import Analysis, Catalog, Competitor, Product, ProductLink, db
 from ..utils import SiteParser, same_site
@@ -15,25 +16,90 @@ def _collect_cache_key(competitor_id, url, title_selector, price_selector):
     return (competitor_id, url or '', title_selector or '', price_selector or '')
 
 
+def _normalize_url_key(url):
+    """Приводит URL к каноничному виду для ключа кэша: схема/регистр хоста,
+    www, завершающий слэш и якорь не должны влиять на попадание в кэш."""
+    u = (url or '').strip()
+    if not u:
+        return ''
+    if not u.lower().startswith(('http://', 'https://')):
+        u = 'https://' + u
+    parts = urlsplit(u)
+    host = parts.netloc.lower()
+    if host.startswith('www.'):
+        host = host[4:]
+    path = parts.path.rstrip('/')
+    return f"{host}{path}?{parts.query}" if parts.query else f"{host}{path}"
+
+
 def _preview_cache_key(url):
     """Ключ кэша результата предпросмотра по URL (без привязки к конкуренту).
 
     Нужен, чтобы сбор после «Найти товары» сохранял ровно то, что пользователь
-    увидел в предпросмотре: иначе повторный проход мог дать другое число товаров
-    (например, скролл/браузер отработали иначе)."""
-    return ('preview', url or '', '', '')
+    увидел в предпросмотре, и не выполнял повторный обход сайта."""
+    return ('preview', _normalize_url_key(url), '', '')
 
 def _collect_cache_get(key):
     entry = _COLLECT_CACHE.get(key)
-    if entry and (time.time() - entry[0]) < _COLLECT_TTL:
+    if entry and (time.time() - entry[0]) < entry[2]:
         return entry[1]
     return None
 
-def _collect_cache_set(key, products):
+def _collect_cache_set(key, products, ttl=None):
     now = time.time()
-    for k in [k for k, v in _COLLECT_CACHE.items() if now - v[0] >= _COLLECT_TTL]:
+    for k in [k for k, v in _COLLECT_CACHE.items() if now - v[0] >= v[2]]:
         _COLLECT_CACHE.pop(k, None)
-    _COLLECT_CACHE[key] = (now, products)
+    _COLLECT_CACHE[key] = (now, products, ttl or _COLLECT_TTL)
+
+
+# --- Кэш предпросмотра на диске -------------------------------------------
+# Нужен потому, что gunicorn обычно поднимает несколько воркеров: предпросмотр
+# может обработать один процесс, а сохранение — другой, и кэш в памяти
+# промахнётся. Файловый кэш общий для всех воркеров одного контейнера.
+_PREVIEW_TTL = 900  # 15 минут — пользователь успевает просмотреть список
+
+
+def _preview_file(url):
+    import hashlib
+    import os
+    import tempfile
+    digest = hashlib.sha1(_normalize_url_key(url).encode('utf-8')).hexdigest()[:16]
+    d = os.path.join(tempfile.gettempdir(), 'pm_preview')
+    os.makedirs(d, exist_ok=True)
+    return os.path.join(d, f'{digest}.json')
+
+
+def _preview_store(url, products):
+    """Сохраняет полный результат предпросмотра (в памяти и на диске)."""
+    _collect_cache_set(_preview_cache_key(url), products, ttl=_PREVIEW_TTL)
+    try:
+        import json
+        with open(_preview_file(url), 'w', encoding='utf-8') as f:
+            json.dump({'ts': time.time(), 'products': products}, f, ensure_ascii=False)
+    except Exception as e:
+        logger.debug(f"[ПРЕВЬЮ] не удалось записать кэш на диск: {e}")
+
+
+def _preview_load(url):
+    """Достаёт результат предпросмотра: сперва память, затем диск. None — нет."""
+    products = _collect_cache_get(_preview_cache_key(url))
+    if products is not None:
+        return products
+    try:
+        import json
+        import os
+        path = _preview_file(url)
+        if not os.path.exists(path):
+            return None
+        if time.time() - os.path.getmtime(path) > _PREVIEW_TTL:
+            os.remove(path)
+            return None
+        with open(path, encoding='utf-8') as f:
+            data = json.load(f)
+        return data.get('products') or None
+    except Exception as e:
+        logger.debug(f"[ПРЕВЬЮ] не удалось прочитать кэш с диска: {e}")
+        return None
 
 class AnalysisService:
     @staticmethod
@@ -222,7 +288,11 @@ class CatalogService:
         # 2) сбор товаров: если по этому URL только что был предпросмотр —
         #    сохраняем ровно то, что пользователь увидел на экране
         feed_cache = None
-        products = _collect_cache_get(_preview_cache_key(normalized))
+        products = _preview_load(normalized)
+        if products is not None:
+            logger.info(
+                f"[КАТАЛОГ] из предпросмотра: {normalized} — товаров {len(products)}"
+            )
         if products is None:
             parser = SiteParser()
             try:
@@ -331,10 +401,11 @@ class SiteParsingService:
         finally:
             parser.close()
 
-        # Кладём полный результат в кэш: последующий сбор по этому же URL сохранит
-        # ровно то, что пользователь увидел в предпросмотре (без повторного обхода).
+        # Кладём ПОЛНЫЙ результат в кэш: последующее сохранение по этому же URL
+        # переиспользует его и не ходит на сайт второй раз. В ответ уходит
+        # усечённый список (limit), а сохраняем мы всё найденное.
         if products:
-            _collect_cache_set(_preview_cache_key(normalized), products)
+            _preview_store(normalized, products)
 
         return {
             'success': bool(products),
@@ -356,7 +427,11 @@ class SiteParsingService:
         products = _collect_cache_get(cache_key)
         if products is None:
             # результат предпросмотра по этому URL (что пользователь видел на экране)
-            products = _collect_cache_get(_preview_cache_key(url))
+            products = _preview_load(url)
+            if products is not None:
+                logger.info(
+                    f"[СБОР] из предпросмотра: {url} — товаров {len(products)} (без повторного обхода)"
+                )
         if products is None:
             logger.info(f"[СБОР] старт: {url}")
             parser = SiteParser()

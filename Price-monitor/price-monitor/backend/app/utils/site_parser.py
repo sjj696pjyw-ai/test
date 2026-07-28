@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 import requests
 from bs4 import BeautifulSoup
 
+from .api_sniffer import paginate_api
 from .auto_extract import (
     auto_extract,
     count_price_nodes,
@@ -170,6 +171,70 @@ class SiteParser:
             except Exception:
                 pass
             self._driver = None
+
+    def _sniff_catalog_api(self, url):
+        """Открывает каталог в браузере с перехватчиком сети, жмёт «Показать ещё»
+        и возвращает запрос, которым сайт догружает товары.
+
+        Нужно для SPA-каталогов без постраничных URL: поймав этот запрос, дальше
+        весь каталог можно забрать напрямую, без браузера.
+        Возвращает (call, products_from_first_call) или (None, []).
+        """
+        from . import api_sniffer
+
+        driver = None
+        own_driver = False
+        try:
+            if self._reuse_driver:
+                if self._driver is None:
+                    self._driver = self._build_driver()
+                driver = self._driver
+            else:
+                driver = self._build_driver()
+                own_driver = True
+
+            if not api_sniffer.install_hook(driver):
+                return None, []
+
+            driver.get(url)
+            time.sleep(1.5)
+            # один клик/скролл — этого достаточно, чтобы сайт сходил за 2-й порцией
+            if not self._click_load_more(driver):
+                try:
+                    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                except Exception:
+                    pass
+            time.sleep(2.5)
+
+            calls = [c for c in api_sniffer.collect_calls(driver)
+                     if api_sniffer.looks_like_api_url(c.get('url'))]
+            logger.debug(f"[API] перехвачено вызовов: {len(calls)}")
+            return api_sniffer.find_product_api(calls)
+        except Exception as e:
+            logger.debug(f"[API] перехват не удался: {e}")
+            return None, []
+        finally:
+            if own_driver and driver is not None:
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
+
+    def _fetch_api_text(self, url, method, headers, body):
+        """Повтор перехваченного запроса напрямую (без браузера)."""
+        try:
+            hdrs = dict(self._get_headers())
+            hdrs.update(headers or {})
+            if method == 'POST':
+                resp = self.session.post(url, headers=hdrs, data=body, timeout=20)
+            else:
+                resp = self.session.get(url, headers=hdrs, timeout=20)
+            if resp.status_code != 200:
+                return None
+            return resp.text
+        except Exception as e:
+            logger.debug(f"[API] запрос не удался: {e}")
+            return None
 
     def _auto_scroll(self, driver, scroll_selector=None, max_rounds=60, pause=0.4,
                      max_seconds=45.0, settle_timeout=3.0):
@@ -1000,7 +1065,29 @@ class SiteParser:
             )
             return acc, method
 
-        # Тир 3: показать ещё / бесконечный скролл — рендер браузером со скроллом.
+        # Тир 3: внутренний API каталога. Для SPA без постраничных URL это
+        # единственный способ забрать весь каталог быстро: один раз ловим в
+        # браузере запрос, которым сайт догружает товары, дальше повторяем его
+        # напрямую с растущим номером страницы.
+        if total_hint and total_hint > len(acc):
+            call, api_products = self._sniff_catalog_api(url)
+            if call:
+                added_first = add(api_products)
+                more = paginate_api(
+                    call,
+                    self._fetch_api_text,
+                    page_size_hint=(page1_count or None),
+                    stop_when=lambda n: bool(total_hint) and (len(acc) + n) >= total_hint,
+                )
+                add(more)
+                logger.info(
+                    f"[СБОР] через API сайта: товаров {len(acc)}"
+                    + (f" из ~{total_hint}" if total_hint else "")
+                )
+                if not total_hint or len(acc) >= total_hint or added_first or more:
+                    return acc, method
+
+        # Тир 4: показать ещё / бесконечный скролл — рендер браузером со скроллом.
         # Пробуем всегда (а не только когда HTML пришёл через requests), иначе
         # результат зависел от того, каким транспортом получена страница.
         if self._looks_scrollable(base_html) or (total_hint and total_hint > len(acc)):
