@@ -1225,15 +1225,19 @@ class SiteParser:
         if not total_hint or len(acc) >= total_hint or last_page < first_page:
             return
         try:
-            budget = float(os.environ.get('COLLECT_EXTRA_SECONDS', '45'))
+            budget = float(os.environ.get('COLLECT_EXTRA_SECONDS', '90'))
         except (TypeError, ValueError):
-            budget = 45.0
+            budget = 90.0
         deadline = time.monotonic() + budget
 
         for attempt in range(1, max_passes + 1):
             before = len(acc)
+            stopped_by_time = False
             for page in range(first_page, last_page + 1):
-                if len(acc) >= total_hint or time.monotonic() > deadline:
+                if len(acc) >= total_hint:
+                    break
+                if time.monotonic() > deadline:
+                    stopped_by_time = True
                     break
                 html = self._fetch_catalog_page(url_for_page(page))
                 if html:
@@ -1242,7 +1246,8 @@ class SiteParser:
                     time.sleep(polite_delay)
             gained = len(acc) - before
             self._trace('добор', проход=attempt, найдено_ещё=gained, всего=len(acc),
-                        из_заявленных=total_hint)
+                        из_заявленных=total_hint,
+                        остановлен=('по времени' if stopped_by_time else 'проход завершён'))
             # смысла продолжать нет: либо всё собрали, либо новое перестало
             # появляться, либо кончилось время
             if gained == 0 or len(acc) >= total_hint or time.monotonic() > deadline:
@@ -1275,7 +1280,7 @@ class SiteParser:
                         примеры=' | '.join(getattr(self, '_collision_examples', [])[:3]) or '—')
 
     def _walk_pages(self, url_for_page, method, add, start, max_pages, enough,
-                    polite_delay=0.25, expected_per_page=0):
+                    polite_delay=0.25, expected_per_page=0, first_page_keys=None):
         """Обходит страницы каталога, накапливая товары.
 
         Ключевой момент: «страница не загрузилась» и «на странице нет новых
@@ -1327,6 +1332,16 @@ class SiteParser:
 
             fail_streak = 0
             items = run_extractor(method, html) or []
+
+            # Частый приём сайтов: за последней страницей снова отдаётся ПЕРВАЯ.
+            # Раньше мы этого не замечали и тратили ещё несколько запросов
+            # (у rus-buket так уходило по 54 товара-повтора на страницу).
+            if first_page_keys and items:
+                page_keys = {self._product_key(p) for p in items}
+                if page_keys and page_keys <= first_page_keys:
+                    stop_reason = 'сайт вернул первую страницу — каталог кончился'
+                    break
+
             added = add(items)
             fetched_total += len(items)
             added_total += added
@@ -1479,6 +1494,9 @@ class SiteParser:
 
         add(products)
         page1_count = len(acc)
+        # Ключи первой страницы: по ним ловим момент, когда сайт после последней
+        # страницы снова начинает отдавать первую.
+        first_keys = {self._product_key(p) for p in products}
         total_hint = self._total_products_hint(base_html)
         self._trace('страница_1', способ=method, товаров=page1_count,
                     всего_на_сайте=(total_hint or 'не указано'),
@@ -1489,11 +1507,16 @@ class SiteParser:
         # 1 товар из json-ld). Показываем, что нашёл каждый способ.
         try:
             price_nodes = count_price_nodes(base_html)
-            if price_nodes >= 10 and page1_count < price_nodes / 3:
-                self._trace('мало_товаров', ценовых_узлов=price_nodes,
+            big_page = len(base_html or '') > 200_000
+            # Порог смягчён: на buketopt (страница 4 МБ, найден 1 товар)
+            # диагностика молчала, и причина оставалась неизвестной.
+            if (price_nodes >= 10 and page1_count < price_nodes / 3) or \
+               (big_page and page1_count < 5):
+                self._trace('мало_товаров', товаров=page1_count,
+                            ценовых_узлов=price_nodes, размер_html=len(base_html or ''),
                             по_способам=tier_counts(base_html))
         except Exception as e:
-            logger.debug(f'[DEBUG] диагностика способов не удалась: {e}')
+            logger.warning(f'[ДИАГНОСТИКА] разбор способов не удался: {e}')
 
         def enough():
             """Собрали всё, что заявлено на странице (если число известно)."""
@@ -1511,7 +1534,7 @@ class SiteParser:
                 lambda i: page_urls[i - 2],   # page_urls[0] — это страница 2
                 method, add,
                 start=2, max_pages=len(page_urls) + 1, enough=enough,
-                expected_per_page=page1_count,
+                expected_per_page=page1_count, first_page_keys=first_keys,
             )
             logger.info(
                 f"[СБОР] пагинация по ссылкам ({method}): до стр. {last}, товаров {len(acc)}"
@@ -1555,7 +1578,7 @@ class SiteParser:
             last = self._walk_pages(
                 page_url, method, add,
                 start=2 if sort_param else 3, max_pages=max_pages, enough=enough,
-                expected_per_page=page1_count,
+                expected_per_page=page1_count, first_page_keys=first_keys,
             )
             logger.info(
                 f"[СБОР] пагинация подбором «{pattern}» ({method}): до стр. {last}, "
