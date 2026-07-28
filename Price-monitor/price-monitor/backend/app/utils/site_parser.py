@@ -1132,7 +1132,7 @@ class SiteParser:
         return self.get_page(url, scroll=False)
 
     def _walk_pages(self, url_for_page, method, add, start, max_pages, enough,
-                    polite_delay=0.25):
+                    polite_delay=0.25, expected_per_page=0):
         """Обходит страницы каталога, накапливая товары.
 
         Ключевой момент: «страница не загрузилась» и «на странице нет новых
@@ -1145,6 +1145,10 @@ class SiteParser:
         empty_streak = 0      # страниц подряд без новых товаров
         fail_streak = 0       # страниц подряд, которые не удалось загрузить
         failed_pages = []     # какие страницы так и не загрузились
+        fetched_total = 0     # сколько карточек всего пришло со страниц
+        added_total = 0       # сколько из них оказались новыми
+        short_pages = []      # страницы, отдавшие меньше товаров, чем первая
+        dup_pages = []        # страницы с повторами (стр:сколько повторов)
         page = start
         stop_reason = 'дошли до конца диапазона'
         # Бюджет времени. Важно: gunicorn убивает воркер по своему таймауту
@@ -1179,7 +1183,14 @@ class SiteParser:
                 continue
 
             fail_streak = 0
-            added = add(run_extractor(method, html))
+            items = run_extractor(method, html) or []
+            added = add(items)
+            fetched_total += len(items)
+            added_total += added
+            if len(items) < expected_per_page:
+                short_pages.append(f'{page}:{len(items)}')
+            if added < len(items):
+                dup_pages.append(f'{page}:{len(items) - added}')
             if added == 0:
                 empty_streak += 1
                 if empty_streak >= 3:
@@ -1196,6 +1207,21 @@ class SiteParser:
         self._trace('обход_страниц', до_страницы=page - 1, причина_остановки=stop_reason,
                     не_загрузились=(failed_pages[:10] or '—'),
                     последняя_ошибка=(self._last_fetch_error or '—'))
+        # Куда делись товары: получено с страниц против реально новых. Большое
+        # число повторов = сайт переупорядочивает каталог между запросами
+        # (например, сортировка «по популярности»), и часть товаров не видна
+        # ни на одной из запрошенных страниц.
+        duplicates = fetched_total - added_total
+        self._trace('учёт_товаров', получено_с_страниц=fetched_total,
+                    новых=added_total, повторов=duplicates,
+                    страниц_с_недобором=(', '.join(short_pages[:12]) or '—'),
+                    повторы_по_страницам=(', '.join(dup_pages[:12]) or '—'))
+        if duplicates > fetched_total * 0.1:
+            logger.warning(
+                f'[СБОР] много повторов при обходе: {duplicates} из {fetched_total} '
+                f'({duplicates * 100 // max(1, fetched_total)}%) — сайт, вероятно, '
+                f'меняет порядок товаров между запросами'
+            )
         return page - 1
 
     def _probe_page_urls(self, base_url, method, base_keys, max_pages=200):
@@ -1304,6 +1330,7 @@ class SiteParser:
                 lambda i: page_urls[i - 2],   # page_urls[0] — это страница 2
                 method, add,
                 start=2, max_pages=len(page_urls) + 1, enough=enough,
+                expected_per_page=page1_count,
             )
             logger.info(
                 f"[СБОР] пагинация по ссылкам ({method}): до стр. {last}, товаров {len(acc)}"
@@ -1327,6 +1354,7 @@ class SiteParser:
                 lambda i: self._build_page_url(url, pattern, i),
                 method, add,
                 start=3, max_pages=max_pages, enough=enough,
+                expected_per_page=page1_count,
             )
             logger.info(
                 f"[СБОР] пагинация подбором «{pattern}» ({method}): до стр. {last}, "
