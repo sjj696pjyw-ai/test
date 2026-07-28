@@ -194,21 +194,36 @@ class SiteParser:
                 own_driver = True
 
             if not api_sniffer.install_hook(driver):
+                logger.warning("[ДИАГНОСТИКА API] перехватчик не установился (CDP недоступен)")
                 return None, []
 
             driver.get(url)
             time.sleep(1.5)
-            # один клик/скролл — этого достаточно, чтобы сайт сходил за 2-й порцией
-            if not self._click_load_more(driver):
+            # клик по «Показать ещё» + скролл — чтобы сайт точно сходил за 2-й порцией
+            clicked = self._click_load_more(driver)
+            if not clicked:
                 try:
                     driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
                 except Exception:
                     pass
-            time.sleep(2.5)
+            time.sleep(3.0)
+            # вторая попытка: часть сайтов реагирует только на повторный клик
+            if not clicked:
+                clicked = self._click_load_more(driver)
+                if clicked:
+                    time.sleep(2.5)
 
-            calls = [c for c in api_sniffer.collect_calls(driver)
-                     if api_sniffer.looks_like_api_url(c.get('url'))]
-            logger.debug(f"[API] перехвачено вызовов: {len(calls)}")
+            all_calls = api_sniffer.collect_calls(driver)
+            calls = [c for c in all_calls if api_sniffer.looks_like_api_url(c.get('url'))]
+            logger.info(
+                f"[API] перехвачено вызовов: {len(all_calls)} (кандидатов {len(calls)}), "
+                f"клик по «показать ещё»: {'да' if clicked else 'нет'}"
+            )
+            if not all_calls:
+                logger.warning(
+                    "[ДИАГНОСТИКА API] сайт не сделал ни одного fetch/XHR — "
+                    "товары могут догружаться иначе"
+                )
             return api_sniffer.find_product_api(calls)
         except Exception as e:
             logger.debug(f"[API] перехват не удался: {e}")

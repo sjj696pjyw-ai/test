@@ -21,9 +21,10 @@ from .auto_extract import _dedup, _walk_for_products
 
 logger = logging.getLogger(__name__)
 
-# Максимальный размер тела ответа, который забираем из браузера (защита от
-# гигантских payload-ов и переполнения памяти).
-_MAX_BODY = 400_000
+# Максимальный размер тела ответа, который забираем из браузера. Ответы каталогов
+# бывают на несколько мегабайт: если обрезать слишком рано, JSON перестанет
+# парситься и товары не найдутся.
+_MAX_BODY = 4_000_000
 
 # JS-перехватчик fetch/XHR. Пишет вызовы в window.__pmNet.
 HOOK_JS = r"""
@@ -109,13 +110,51 @@ def collect_calls(driver):
     return [c for c in calls if isinstance(c, dict) and c.get('text')]
 
 
+def _salvage_json(text):
+    """Пытается разобрать JSON, в том числе обрезанный.
+
+    Если ответ был усечён (слишком большой), json.loads падает — тогда режем
+    хвост до последнего закрытого объекта и достраиваем недостающие скобки,
+    чтобы вытащить хотя бы часть товаров."""
+    try:
+        return json.loads(text)
+    except (ValueError, TypeError):
+        pass
+    cut = max(text.rfind('}'), text.rfind(']'))
+    if cut <= 0:
+        return None
+    head = text[:cut + 1]
+    # достраиваем незакрытые скобки в правильном порядке
+    stack = []
+    in_str = False
+    esc = False
+    for ch in head:
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == '\\':
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in '{[':
+            stack.append('}' if ch == '{' else ']')
+        elif ch in '}]' and stack:
+            stack.pop()
+    try:
+        return json.loads(head + ''.join(reversed(stack)))
+    except (ValueError, TypeError):
+        return None
+
+
 def products_from_payload(text):
     """Извлекает товары из тела ответа API (любая структура JSON)."""
     if not text:
         return []
-    try:
-        data = json.loads(text)
-    except (ValueError, TypeError):
+    data = _salvage_json(text)
+    if data is None:
         return []
     out = []
     try:
@@ -130,16 +169,32 @@ def find_product_api(calls, min_products=3):
 
     Возвращает (call, products) или (None, [])."""
     best, best_products = None, []
+    scored = []
     for call in calls:
         products = products_from_payload(call.get('text'))
+        scored.append((len(products), len(call.get('text') or ''), call))
         if len(products) > len(best_products):
             best, best_products = call, products
+
     if best and len(best_products) >= min_products:
         logger.info(
             f"[API] найден источник товаров: {best.get('method')} "
             f"{str(best.get('url'))[:120]} — {len(best_products)} товаров в ответе"
         )
         return best, best_products
+
+    # Ничего не подошло — печатаем, что вообще видели, иначе причину не понять.
+    scored.sort(key=lambda x: (-x[0], -x[1]))
+    logger.warning(
+        f"[ДИАГНОСТИКА API] источник товаров не найден: вызовов {len(calls)}, "
+        f"максимум товаров в ответе {max([s[0] for s in scored], default=0)}"
+    )
+    for n, size, call in scored[:6]:
+        logger.warning(
+            f"[ДИАГНОСТИКА API]   {call.get('method', '?'):4} "
+            f"статус={call.get('status')} размер={size} товаров={n} "
+            f"{str(call.get('url'))[:110]}"
+        )
     return None, []
 
 
