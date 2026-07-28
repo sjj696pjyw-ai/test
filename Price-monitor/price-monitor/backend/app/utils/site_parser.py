@@ -39,6 +39,8 @@ class SiteParser:
         self._last_fetch_error = None  # причина последней неудачи requests-фетча
         # Сайт отдаёт 403/429 на обычные запросы: страницы забираем браузером.
         self._requests_blocked = False
+        self._tried_browser_session = False  # пробовали ли забрать cookies браузера
+        self._browser_ua = None              # User-Agent браузера (к его cookies)
         # Трасса сбора: какие тиры отработали и с каким результатом. Нужна,
         # чтобы по итогам прогона было видно, ПОЧЕМУ собрано столько товаров,
         # а не только сколько (см. bench_service).
@@ -54,7 +56,12 @@ class SiteParser:
         return entry
 
     def _get_headers(self):
-        return get_default_headers()
+        headers = dict(get_default_headers())
+        # Если забрали cookies у браузера — ходим с его же User-Agent: анти-бот
+        # часто привязывает выданную cookie именно к нему.
+        if self._browser_ua:
+            headers['User-Agent'] = self._browser_ua
+        return headers
 
     def _clean_price(self, price_str):
         if not price_str:
@@ -128,6 +135,33 @@ class SiteParser:
         driver.set_script_timeout(20)
         return driver
 
+    def _adopt_browser_session(self, driver):
+        """Переносит cookies и User-Agent браузера в requests-сессию.
+
+        Смысл: анти-бот выдаёт cookie после прохождения проверки в браузере.
+        Скопировав её, дальше можно ходить обычными быстрыми запросами вместо
+        того, чтобы поднимать браузер на каждую страницу каталога.
+        """
+        try:
+            cookies = driver.get_cookies() or []
+            for c in cookies:
+                if not c.get('name'):
+                    continue
+                self.session.cookies.set(
+                    c['name'], c.get('value', ''),
+                    domain=c.get('domain') or None,
+                    path=c.get('path') or '/',
+                )
+            ua = driver.execute_script('return navigator.userAgent;')
+            if ua:
+                self._browser_ua = ua
+            if cookies:
+                logger.debug(f'[DEBUG] перенесено cookies из браузера: {len(cookies)}')
+            return len(cookies)
+        except Exception as e:
+            logger.debug(f'[DEBUG] не удалось перенести сессию браузера: {e}')
+            return 0
+
     def _get_page_selenium(self, url, scroll_selector=None, do_scroll=True):
         global _SELENIUM_DISABLED
         driver = None
@@ -145,6 +179,11 @@ class SiteParser:
             time.sleep(1.0)
             if do_scroll:
                 self._auto_scroll(driver, scroll_selector)
+            # Забираем cookies и User-Agent браузера в requests-сессию: защита от
+            # ботов обычно ставит cookie после проверки, и с ней обычные запросы
+            # начинают проходить. Без этого пришлось бы каждую страницу каталога
+            # грузить браузером (~11с против ~1с) — на большом каталоге это часы.
+            self._adopt_browser_session(driver)
             return driver.page_source
         except Exception as e:
             msg = str(e)
@@ -999,6 +1038,30 @@ class SiteParser:
             # 403/401/429 — признак блокировки обычных запросов, а не поломки
             if not any(code in err for code in ('403', '401', '429', 'forbidden')):
                 return None
+
+            if not self.use_selenium or _SELENIUM_DISABLED:
+                return None
+
+            # Прежде чем переходить на «браузер на каждую страницу» (медленно),
+            # пробуем пройти проверку один раз браузером и забрать его cookies —
+            # дальше обычные запросы обычно проходят.
+            if not self._tried_browser_session:
+                self._tried_browser_session = True
+                self._reuse_driver = True
+                probe = self.get_page(url, scroll=False)   # тут же переносим cookies
+                if probe:
+                    retry = self._fetch_html_requests(url)
+                    if retry:
+                        logger.info('[СБОР] cookies из браузера подошли — '
+                                    'продолжаю быстрыми запросами')
+                        self._trace('cookies_из_браузера', результат='подошли')
+                        self._reuse_driver = False
+                        self.close()
+                        return retry
+                    self._trace('cookies_из_браузера', результат='не помогли',
+                                ошибка=self._last_fetch_error)
+                    return probe   # страница у нас уже есть, не тратим ещё один заход
+
             self._requests_blocked = True
             # держим один браузер на все страницы: перезапуск Chrome на каждую
             # съел бы всё время обхода
@@ -1029,12 +1092,13 @@ class SiteParser:
         failed_pages = []     # какие страницы так и не загрузились
         page = start
         stop_reason = 'дошли до конца диапазона'
-        # Бюджет времени: через браузер страница грузится в разы дольше, и без
-        # ограничения обход большого каталога затянулся бы на минуты.
+        # Бюджет времени. Важно: gunicorn убивает воркер по своему таймауту
+        # (сейчас 180с), поэтому обход обязан уложиться с запасом — иначе
+        # пользователь получает 502, а не частичный результат.
         try:
-            budget = float(os.environ.get('COLLECT_MAX_SECONDS', '180'))
+            budget = float(os.environ.get('COLLECT_MAX_SECONDS', '110'))
         except (TypeError, ValueError):
-            budget = 180.0
+            budget = 110.0
         deadline = time.monotonic() + budget
         while page <= max_pages:
             if enough():
@@ -1157,6 +1221,17 @@ class SiteParser:
         self._trace('страница_1', способ=method, товаров=page1_count,
                     всего_на_сайте=(total_hint or 'не указано'),
                     источник_html=(html_source or '—'), размер_html=len(base_html or ''))
+
+        # Если товаров подозрительно мало при большом числе «ценовых» узлов —
+        # значит выбранный способ извлечения провалился (так buketopt отдаёт
+        # 1 товар из json-ld). Показываем, что нашёл каждый способ.
+        try:
+            price_nodes = count_price_nodes(base_html)
+            if price_nodes >= 10 and page1_count < price_nodes / 3:
+                self._trace('мало_товаров', ценовых_узлов=price_nodes,
+                            по_способам=tier_counts(base_html))
+        except Exception as e:
+            logger.debug(f'[DEBUG] диагностика способов не удалась: {e}')
 
         def enough():
             """Собрали всё, что заявлено на странице (если число известно)."""
