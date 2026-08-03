@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { X, Search, Plus, ChevronDown, ChevronUp } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { X, Search, Plus, ChevronDown, ChevronUp, Code2, RefreshCw, Check } from 'lucide-react'
 import api from '../utils/api'
 import { formatPrice } from '../utils/export'
 import { useToast } from '../context/ToastContext'
@@ -52,6 +52,39 @@ export default function AddCatalogModal({ competitor, onClose, onAdded }) {
   const [showManual, setShowManual] = useState(false)
   const [titleSelector, setTitleSelector] = useState('')
   const [priceSelector, setPriceSelector] = useState('')
+  // Встраивание скрипта на свой сайт: он присылает найденные блоки товаров,
+  // и пользователь выбирает нужный вместо ручного подбора селекторов.
+  const [showEmbed, setShowEmbed] = useState(false)
+  const [embedSite, setEmbedSite] = useState(null)
+  const [embedLoading, setEmbedLoading] = useState(false)
+
+  const loadEmbed = async () => {
+    setEmbedLoading(true)
+    try {
+      const resp = await api.get('/embed/site')
+      setEmbedSite(resp.data.site)
+    } catch {
+      showError('Не удалось получить данные подключения')
+    } finally {
+      setEmbedLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (showEmbed && !embedSite) loadEmbed()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showEmbed])
+
+  const snippet = embedSite
+    ? `<script src="${window.location.origin}/embed/pm.js?key=${embedSite.key}" async></script>`
+    : ''
+
+  const useBlock = (block) => {
+    if (block.title_selector) setTitleSelector(block.title_selector)
+    if (block.price_selector) setPriceSelector(block.price_selector)
+    setShowManual(true)
+    success('Селекторы подставлены из выбранного блока')
+  }
 
   const siteHost = hostOf(competitor?.domain)
   const siteBase = baseDomain(siteHost)
@@ -194,6 +227,125 @@ export default function AddCatalogModal({ competitor, onClose, onAdded }) {
           </div>
         )}
 
+        {/* Подключение скрипта к своему сайту: он сам находит блоки товаров,
+            и остаётся только выбрать нужный. */}
+        <button
+          onClick={() => setShowEmbed((v) => !v)}
+          className="mt-4 text-sm text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1"
+        >
+          {showEmbed ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          <Code2 className="h-4 w-4" />
+          Подключить свой сайт скриптом
+        </button>
+
+        {showEmbed && (
+          <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg space-y-3">
+            {embedLoading && !embedSite ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">Загрузка…</p>
+            ) : (
+              <>
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  1. Вставьте этот код на страницы своего сайта (перед{' '}
+                  <code>&lt;/body&gt;</code>):
+                </p>
+                <div className="flex gap-2">
+                  <code className="flex-1 text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded p-2 break-all text-gray-800 dark:text-gray-200">
+                    {snippet}
+                  </code>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard?.writeText(snippet)
+                      success('Код скопирован')
+                    }}
+                    className="btn-secondary text-xs shrink-0 self-start"
+                  >
+                    Копировать
+                  </button>
+                </div>
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  2. Откройте нужную страницу каталога с одной из меток в адресе:
+                </p>
+                <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1 pl-1">
+                  <li>
+                    <code>?pm-pick=1</code> — <b>визуальный выбор</b>: наводите мышь, блоки
+                    подсвечиваются, кликаете по названию товара и по цене.
+                  </li>
+                  <li>
+                    <code>?pm-scan=1</code> — автоматический разбор: скрипт сам найдёт
+                    повторяющиеся блоки и предложит варианты.
+                  </li>
+                </ul>
+                <p className="text-xs text-gray-500 dark:text-gray-500">
+                  Обычные посетители сайта ничего не отправляют и интерфейса не видят.
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={loadEmbed}
+                    disabled={embedLoading}
+                    className="btn-secondary text-xs flex items-center gap-1"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${embedLoading ? 'animate-spin' : ''}`} />
+                    Проверить
+                  </button>
+                  {embedSite?.connected ? (
+                    <span className="text-xs text-green-600 dark:text-green-400">
+                      Подключено: {embedSite.domain || 'сайт'}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      Данных со скрипта ещё не было
+                    </span>
+                  )}
+                </div>
+
+                {embedSite?.blocks?.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                      3. Найденные блоки товаров — выберите нужный:
+                    </p>
+                    {embedSite.blocks.map((b, i) => (
+                      <div
+                        key={i}
+                        className="border border-gray-200 dark:border-gray-600 rounded-md p-2 bg-white dark:bg-gray-800"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs text-gray-700 dark:text-gray-300">
+                            {b.picked && (
+                              <span className="mr-1 px-1.5 py-0.5 rounded bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300">
+                                выбрано вами
+                              </span>
+                            )}
+                            <b>{b.count}</b> блоков · <code>{b.card_selector}</code>
+                          </span>
+                          <button
+                            onClick={() => useBlock(b)}
+                            className="btn-primary text-xs py-1 px-2 flex items-center gap-1 shrink-0"
+                          >
+                            <Check className="h-3 w-3" />
+                            Выбрать
+                          </button>
+                        </div>
+                        <div className="mt-1 space-y-0.5">
+                          {(b.samples || []).slice(0, 3).map((s, j) => (
+                            <div
+                              key={j}
+                              className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400"
+                            >
+                              <span className="truncate">{s.name}</span>
+                              <span className="shrink-0 ml-2">{formatPrice(s.price)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
         <button
           onClick={() => setShowManual((v) => !v)}
           className="mt-4 text-sm text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1"
@@ -226,6 +378,24 @@ export default function AddCatalogModal({ competitor, onClose, onAdded }) {
                 placeholder=".product-card__price"
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
+            </div>
+
+            {/* Та же подсказка, что и на странице настройки селекторов: без неё
+                пользователь не понимает, откуда взять эти значения. */}
+            <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
+              <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2 text-sm">
+                Как найти селектор?
+              </h4>
+              <ol className="text-xs text-blue-800 dark:text-blue-200 space-y-1 list-decimal list-inside">
+                <li>Откройте нужную страницу сайта в браузере</li>
+                <li>Нажмите F12 или правой кнопкой мыши → Исследовать элемент</li>
+                <li>Найдите элемент с названием товара или ценой</li>
+                <li>Скопируйте class или id выбранного элемента</li>
+              </ol>
+              <p className="text-xs text-blue-800/80 dark:text-blue-200/80 mt-2">
+                Примеры: <code>.product-title</code>, <code>#item-name</code>,{' '}
+                <code>[itemprop=&quot;price&quot;]</code>
+              </p>
             </div>
           </div>
         )}

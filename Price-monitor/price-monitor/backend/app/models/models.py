@@ -155,6 +155,42 @@ class Product(db.Model):
             'catalog_id': self.catalog_id
         }
 
+class EmbedSite(db.Model):
+    """Сайт пользователя со встроенным скриптом PriceMonitor.
+
+    Скрипт ставится на свой сайт и присылает «слепок» — какие повторяющиеся
+    блоки товаров есть на странице. По слепку пользователь выбирает нужную
+    группу блоков вместо того, чтобы вручную подбирать CSS-селекторы.
+    """
+    __tablename__ = 'embed_sites'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    key = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    domain = db.Column(db.String(255))          # домен, с которого пришёл слепок
+    last_seen = db.Column(db.DateTime)          # когда скрипт последний раз отвечал
+    last_url = db.Column(db.String(1000))       # страница последнего слепка
+    snapshot = db.Column(db.Text)               # JSON: найденные группы блоков
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self, with_snapshot=False):
+        import json as _json
+        data = {
+            'id': self.id,
+            'key': self.key,
+            'domain': self.domain,
+            'connected': bool(self.last_seen),
+            'last_seen': self.last_seen.isoformat() if self.last_seen else None,
+            'last_url': self.last_url,
+        }
+        if with_snapshot and self.snapshot:
+            try:
+                data['blocks'] = _json.loads(self.snapshot)
+            except (ValueError, TypeError):
+                data['blocks'] = []
+        return data
+
+
 class PriceHistory(db.Model):
     __tablename__ = 'price_history'
 
