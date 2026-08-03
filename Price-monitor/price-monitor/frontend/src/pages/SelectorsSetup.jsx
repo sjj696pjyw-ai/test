@@ -11,6 +11,7 @@ import {
   Sparkles,
   ChevronDown,
 } from 'lucide-react'
+import EmbedPicker from '../components/EmbedPicker'
 
 const METHOD_LABELS = {
   'json-ld': 'структурированные данные (JSON-LD)',
@@ -372,6 +373,19 @@ export default function SelectorsSetup() {
                 </div>
               )}
             </div>
+          )}
+
+          {/* Визуальный выбор мышкой — только для своего сайта: на чужой сайт
+              скрипт поставить нельзя. */}
+          {competitor?.is_user_site && (
+            <EmbedPicker
+              siteUrl={url || competitor?.domain || ''}
+              onPick={({ title_selector, price_selector }) => {
+                if (title_selector) setNameSelector(title_selector)
+                if (price_selector) setPriceSelector(price_selector)
+                setShowManual(true)
+              }}
+            />
           )}
 
           {/* Ручные селекторы — запасной вариант */}

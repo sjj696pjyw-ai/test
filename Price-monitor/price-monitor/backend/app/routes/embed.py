@@ -1,14 +1,13 @@
 """Встраиваемый скрипт PriceMonitor и приём «слепка» страницы.
 
-Идея: пользователь ставит на свой сайт небольшой скрипт. Скрипт сам находит на
-странице повторяющиеся блоки товаров и присылает нам их описание — селектор,
-сколько таких блоков, и пара примеров с названием и ценой. В интерфейсе
-PriceMonitor пользователь просто выбирает нужную группу блоков, вместо того
-чтобы вручную подбирать CSS-селекторы через инспектор браузера.
+Идея: владелец ставит на СВОЙ сайт небольшой скрипт и открывает страницу
+каталога с меткой ?pm-pick=1. Включается визуальный режим: блоки подсвечиваются
+по наведению, клик по названию товара и по цене определяет селекторы, и они
+уходят в PriceMonitor. Это заменяет ручной подбор CSS через инспектор браузера.
 
-Скрипт не собирает никаких данных о посетителях: он срабатывает только когда
-владелец сайта открывает страницу с меткой ?pm-scan=1 (или сам вызывает
-window.pmScan()).
+Скрипт не собирает никаких данных о посетителях: без метки в адресе он ничего
+не делает и никакого интерфейса не показывает (владелец может запустить режим
+и вручную — window.pmPick()).
 """
 import json
 import logging
@@ -32,7 +31,6 @@ PM_JS = r"""
 (function () {
   var KEY = '__PM_KEY__';
   var API = '__PM_API__';
-
   function priceFrom(text) {
     if (!text) return null;
     var m = String(text).replace(/ /g, ' ')
@@ -43,96 +41,9 @@ PM_JS = r"""
     return isFinite(val) && val > 0 ? val : null;
   }
 
-  function signature(el) {
-    var cls = (el.className && typeof el.className === 'string')
-      ? el.className.trim().split(/\s+/).slice(0, 3).join('.') : '';
-    return el.tagName.toLowerCase() + (cls ? '.' + cls : '');
-  }
-
-  function selectorFor(el) {
-    var cls = (el.className && typeof el.className === 'string')
-      ? el.className.trim().split(/\s+/).filter(function (c) { return c && !/\d{3,}/.test(c); })
-      : [];
-    if (cls.length) return '.' + cls.slice(0, 2).join('.');
-    return el.tagName.toLowerCase();
-  }
-
+  // Текст элемента без лишних пробелов. Нужна при сборе примеров товаров.
   function textOf(el) {
-    return (el.textContent || '').replace(/\s+/g, ' ').trim();
-  }
-
-  function scan() {
-    var groups = {};
-    var all = document.querySelectorAll('div,li,article,section,tr');
-    for (var i = 0; i < all.length && i < 8000; i++) {
-      var el = all[i];
-      var txt = textOf(el);
-      if (!txt || txt.length > 400) continue;
-      if (priceFrom(txt) === null) continue;
-      // берём самый внутренний блок, где ещё есть и цена, и ссылка/заголовок
-      var link = el.querySelector('a[href]');
-      var sig = signature(el.parentElement || el) + ' > ' + signature(el);
-      if (!groups[sig]) groups[sig] = { items: [], el: el };
-      groups[sig].items.push({ el: el, text: txt, link: link });
-    }
-
-    var out = [];
-    Object.keys(groups).forEach(function (sig) {
-      var g = groups[sig];
-      if (g.items.length < 3) return;               // не повторяющийся блок
-      var samples = [];
-      for (var i = 0; i < g.items.length && samples.length < 3; i++) {
-        var it = g.items[i];
-        var price = priceFrom(it.text);
-        var nameEl = it.el.querySelector('a[href], h1, h2, h3, h4, [class*="name"], [class*="title"]');
-        var name = nameEl ? textOf(nameEl) : it.text.slice(0, 80);
-        if (!name || price === null) continue;
-        samples.push({
-          name: name.slice(0, 120),
-          price: price,
-          url: it.link ? it.link.href : null
-        });
-      }
-      if (!samples.length) return;
-      var first = g.items[0].el;
-      var nameEl = first.querySelector('a[href], h1, h2, h3, h4, [class*="name"], [class*="title"]');
-      var priceEl = null;
-      var cand = first.querySelectorAll('*');
-      for (var k = 0; k < cand.length; k++) {
-        if (priceFrom(textOf(cand[k])) !== null && cand[k].children.length === 0) {
-          priceEl = cand[k];
-          break;
-        }
-      }
-      out.push({
-        count: g.items.length,
-        card_selector: selectorFor(first),
-        title_selector: nameEl ? selectorFor(nameEl) : null,
-        price_selector: priceEl ? selectorFor(priceEl) : null,
-        samples: samples
-      });
-    });
-
-    out.sort(function (a, b) { return b.count - a.count; });
-    return out.slice(0, 8);
-  }
-
-  function send() {
-    var payload = {
-      key: KEY,
-      url: location.href,
-      title: document.title,
-      blocks: scan()
-    };
-    try {
-      fetch(API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      }).then(function () {
-        if (window.console) console.log('[PriceMonitor] страница передана, блоков: ' + payload.blocks.length);
-      });
-    } catch (e) { /* тихо: скрипт не должен ломать сайт */ }
+    return ((el && el.textContent) || '').replace(/\s+/g, ' ').trim();
   }
 
   // ---------------------------------------------------------------------
@@ -258,7 +169,7 @@ PM_JS = r"""
           body: JSON.stringify(payload)
         }).then(function () {
           render('готово: найдено блоков — ' + payload.blocks[0].count +
-                 '. Вернитесь в PriceMonitor и нажмите «Проверить».');
+                 '. Вернитесь в PriceMonitor — выбор уже там.');
           box.style.display = 'none';
           document.removeEventListener('mousemove', onMove, true);
           document.removeEventListener('click', onClick, true);
@@ -271,13 +182,11 @@ PM_JS = r"""
     document.addEventListener('click', onClick, true);
   }
 
-  window.pmScan = send;
   window.pmPick = pick;
   // Автозапуск только по явной метке в адресе — обычные посетители ничего
   // не отправляют и никакого интерфейса не видят.
   function boot() {
     if (/[?&]pm-pick=1/.test(location.search)) setTimeout(pick, 600);
-    else if (/[?&]pm-scan=1/.test(location.search)) setTimeout(send, 800);
   }
   if (document.readyState === 'complete') boot();
   else window.addEventListener('load', boot);
