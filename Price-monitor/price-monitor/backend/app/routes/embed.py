@@ -30,7 +30,17 @@ embed_bp = Blueprint('embed', __name__)
 PM_JS = r"""
 (function () {
   var KEY = '__PM_KEY__';
-  var API = '__PM_API__';
+  // Адрес API берём из собственного src скрипта: он гарантированно совпадает
+  // с тем, откуда скрипт загрузился (включая схему). Значение с сервера —
+  // запасной вариант: за прокси приложение может считать себя http, и тогда
+  // запрос с https-страницы браузер заблокирует как смешанное содержимое.
+  var API = (function () {
+    try {
+      var src = (document.currentScript && document.currentScript.src) || '';
+      if (src) return src.replace(/\/embed\/pm\.js.*$/, '') + '/api/embed/snapshot';
+    } catch (e) { /* ниже — запасной вариант */ }
+    return '__PM_API__';
+  })();
   function priceFrom(text) {
     if (!text) return null;
     var m = String(text).replace(/ /g, ' ')
@@ -167,14 +177,29 @@ PM_JS = r"""
         fetch(API, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
-        }).then(function () {
+        }).then(function (resp) {
+          // ВАЖНО: fetch не считает ошибкой ответ 403 — статус надо проверять
+          // самим, иначе «ключ не подошёл» выглядело бы как успех.
+          if (resp.status === 403) {
+            render('ключ не подошёл — скопируйте свежий код из PriceMonitor');
+            return;
+          }
+          if (!resp.ok) {
+            render('сервер ответил ошибкой ' + resp.status + ' — попробуйте позже');
+            return;
+          }
           render('готово: найдено блоков — ' + payload.blocks[0].count +
                  '. Вернитесь в PriceMonitor — выбор уже там.');
           box.style.display = 'none';
           document.removeEventListener('mousemove', onMove, true);
           document.removeEventListener('click', onClick, true);
-        }).catch(function () { render('не удалось отправить — проверьте ключ'); });
-      } catch (e) { render('не удалось отправить'); }
+        }).catch(function (err) {
+          // Сюда попадают только сетевые сбои: заблокированный запрос,
+          // отсутствие CORS, недоступный сервер.
+          render('запрос не прошёл (' + (err && err.message ? err.message : 'сеть') +
+                 '). Проверьте, что сайт открыт по https и адрес ' + API + ' доступен.');
+        });
+      } catch (e) { render('не удалось отправить: ' + e.message); }
     }
 
     render();
@@ -198,10 +223,30 @@ PM_JS = r"""
 def serve_script():
     """Отдаёт скрипт для встраивания. Ключ передаётся параметром ?key=."""
     key = (request.args.get('key') or '').strip()
-    api = request.host_url.rstrip('/') + '/api/embed/snapshot'
+    # За обратным прокси Flask видит http, поэтому берём адрес из FRONTEND_URL,
+    # а если его нет — принудительно https (сайт работает по https).
+    import os
+    base = (os.environ.get('FRONTEND_URL') or request.host_url).rstrip('/')
+    if base.startswith('http://') and 'localhost' not in base and '127.0.0.1' not in base:
+        base = 'https://' + base[len('http://'):]
+    api = base + '/api/embed/snapshot'
     body = PM_JS.replace('__PM_KEY__', key).replace('__PM_API__', api)
     resp = Response(body, mimetype='application/javascript')
     resp.headers['Cache-Control'] = 'public, max-age=300'
+    return resp
+
+
+def _cors(resp):
+    """Открытый CORS для приёма слепка.
+
+    Эндпоинт вызывается со стороннего домена (сайта пользователя) и не
+    использует куки, поэтому здесь безопасно разрешить любой origin. Важно НЕ
+    ставить Allow-Credentials: с ним браузер запрещает звёздочку в Allow-Origin.
+    """
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+    resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    resp.headers['Access-Control-Max-Age'] = '86400'
     return resp
 
 
@@ -209,13 +254,20 @@ def serve_script():
 def receive_snapshot():
     """Принимает слепок страницы от встроенного скрипта."""
     if request.method == 'OPTIONS':
-        return ('', 204)
+        # предварительный запрос браузера перед POST с JSON
+        return _cors(Response('', 204))
 
     data = request.get_json(silent=True) or {}
     key = (data.get('key') or '').strip()
     site = EmbedSite.query.filter_by(key=key).first() if key else None
     if not site:
-        return jsonify({'error': 'Неизвестный ключ сайта'}), 403
+        # Логируем префикс ключа: по нему видно, дошёл ли запрос вообще и с чем
+        # именно он пришёл, при этом сам ключ в логи не попадает целиком.
+        logger.warning(
+            '[ВСТРАИВАНИЕ] отклонён ключ %s… с %s',
+            key[:6] or '(пусто)', request.headers.get('Origin') or '-',
+        )
+        return _cors(jsonify({'error': 'Неизвестный ключ сайта'})), 403
 
     blocks = data.get('blocks') or []
     if not isinstance(blocks, list):
@@ -230,7 +282,7 @@ def receive_snapshot():
     db.session.commit()
 
     logger.info(f'[ВСТРАИВАНИЕ] слепок от {site.domain}: групп блоков {len(blocks)}')
-    return jsonify({'ok': True, 'blocks': len(blocks)}), 200
+    return _cors(jsonify({'ok': True, 'blocks': len(blocks)})), 200
 
 
 @embed_bp.route('/api/embed/site', methods=['GET'])
